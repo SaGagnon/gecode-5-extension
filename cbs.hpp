@@ -41,9 +41,10 @@ private:
   } best_candidate;
 };
 
+template<class View>
 class aAvgSD : public BranchingHeuristic {
 public:
-  aAvgSD(ViewArray<Int::IntView>& x) {
+  aAvgSD(ViewArray<View>& x) {
     if (densities_sum == NULL) {
       minVal = INT_MAX;
       int maxVal = INT_MIN;
@@ -99,19 +100,29 @@ private:
   } best_candidate;
 };
 
-int aAvgSD::minVal = INT_MAX;
-int aAvgSD::width = -1;
-double *aAvgSD::densities_sum = NULL;
-int *aAvgSD::count = NULL;
-__gnu_cxx::hash_map<unsigned int, unsigned int> aAvgSD::pos;
+typedef __gnu_cxx::hash_map<unsigned int, unsigned int> uIntuIntH;
 
+template<> int aAvgSD<Int::IntView>::minVal = INT_MAX;
+template<> int aAvgSD<Int::IntView>::width = -1;
+template<> double *aAvgSD<Int::IntView>::densities_sum = NULL;
+template<> int *aAvgSD<Int::IntView>::count = NULL;
+template<> uIntuIntH aAvgSD<Int::IntView>::pos = uIntuIntH();
+
+// TODO: On n'a pas besoin de ça ici. Optimisation requise.
+template<> int aAvgSD<Int::BoolView>::minVal = INT_MAX;
+template<> int aAvgSD<Int::BoolView>::width = -1;
+template<> double *aAvgSD<Int::BoolView>::densities_sum = NULL;
+template<> int *aAvgSD<Int::BoolView>::count = NULL;
+template<> uIntuIntH aAvgSD<Int::BoolView>::pos = uIntuIntH();
+
+template<class View>
 class CBSBrancher : public Brancher {
 protected:
-  ViewArray<Int::IntView> x;
+  ViewArray<View> x;
 public:
-  CBSBrancher(Home home, ViewArray<Int::IntView>& x0)
+  CBSBrancher(Home home, ViewArray<View>& x0)
     : Brancher(home), x(x0) {}
-  static void post(Home home, ViewArray<Int::IntView>& x) {
+  static void post(Home home, ViewArray<View>& x) {
     (void) new (home) CBSBrancher(home,x);
   }
   virtual size_t dispose(Space& home) {
@@ -135,7 +146,8 @@ public:
   }
   // choice
   virtual Choice* choice(Space& home) {
-    aAvgSD heur(x);
+//    aAvgSD<View> heur(x);
+    MaxSD heur;
     for (Propagators p(home, PropagatorGroup::all); p(); ++p)
       p.propagator().cbs(home, &heur);
 
@@ -180,7 +192,13 @@ enum CBSStrategy {
 void cbsbranch(Home home, const IntVarArgs& x) {
   if (home.failed()) return;
   ViewArray<Int::IntView> y(home,x);
-  CBSBrancher::post(home,y);
+  CBSBrancher<Int::IntView>::post(home,y);
+}
+
+void cbsbranch(Home home, const BoolVarArgs& x) {
+  if (home.failed()) return;
+  ViewArray<Int::BoolView> y(home,x);
+  CBSBrancher<Int::BoolView>::post(home,y);
 }
 
 #endif //__CBS_HPP__

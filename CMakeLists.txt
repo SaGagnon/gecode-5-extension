@@ -18,4 +18,5 @@ target_link_libraries(cbs ${Gecode_LIBRARIES})
 add_executable(latinsquare latinsquare.cpp)
 target_link_libraries(latinsquare ${Gecode_LIBRARIES})
 
-
+add_executable(nonogram nonogram.cpp)
+target_link_libraries(nonogram ${Gecode_LIBRARIES})
