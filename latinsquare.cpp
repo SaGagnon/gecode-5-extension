@@ -29,9 +29,7 @@
 #include <gecode/int.hh>
 #include <gecode/minimodel.hh>
 
-#include <ext/hash_map>
-
-#include "cbs/cbs.hpp"
+#include "cbs.hpp"
 
 using namespace Gecode;
 

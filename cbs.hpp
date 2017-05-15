@@ -1,6 +1,9 @@
 #ifndef __CBS_HPP__
 #define __CBS_HPP__
 
+#include <gecode/int.hh>
+#include <ext/hash_map>
+
 using namespace Gecode;
 
 class BranchingHeuristic : public CBS {
@@ -101,7 +104,6 @@ int aAvgSD::width = -1;
 double *aAvgSD::densities_sum = NULL;
 int *aAvgSD::count = NULL;
 __gnu_cxx::hash_map<unsigned int, unsigned int> aAvgSD::pos;
-
 
 class CBSBrancher : public Brancher {
 protected:
