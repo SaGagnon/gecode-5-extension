@@ -115,13 +115,52 @@ template<> double *aAvgSD<Int::BoolView>::densities_sum = NULL;
 template<> int *aAvgSD<Int::BoolView>::count = NULL;
 template<> uIntuIntH aAvgSD<Int::BoolView>::pos = uIntuIntH();
 
+class SharedHashMap : public SharedHandle {
+protected:
+  class SharedHashMapObject : public SharedHandle::Object {
+  public:
+    typedef __gnu_cxx::hash_map<unsigned int, unsigned int> HashMap;
+    HashMap hash_map;
+  public:
+    SharedHashMapObject(void) {}
+    SharedHashMapObject(const SharedHashMapObject& shmo)
+      : hash_map(shmo.hash_map) {}
+    virtual Object* copy(void) const {
+      return new SharedHashMapObject(*this);
+    }
+    virtual ~SharedHashMapObject(void) {}
+  };
+public:
+  typedef SharedHashMapObject::HashMap HashMap;
+public:
+  SharedHashMap(void) {}
+  void init(void) {
+    assert(object() == NULL);
+    object(new SharedHashMapObject());
+  }
+  HashMap get(void) const {
+    return static_cast<SharedHashMapObject*>(object())->hash_map;
+  }
+  void set(HashMap hm) {
+    static_cast<SharedHashMapObject*>(object())->hash_map = hm;
+  }
+  // some inherited members
+  void update(Space& home, bool share, SharedHandle& sh) {
+    SharedHandle::update(home,share,sh);
+  }
+};
+
+
 template<class View>
 class CBSBrancher : public Brancher {
 protected:
+  SharedHashMap shm;
   ViewArray<View> x;
 public:
   CBSBrancher(Home home, ViewArray<View>& x0)
-    : Brancher(home), x(x0) {}
+    : Brancher(home), x(x0) {
+    shm.init();
+  }
   static void post(Home home, ViewArray<View>& x) {
     (void) new (home) CBSBrancher(home,x);
   }
@@ -132,6 +171,7 @@ public:
   CBSBrancher(Space& home, bool share, CBSBrancher& b)
     : Brancher(home,share,b) {
     x.update(home,share,b.x);
+    shm.update(home,share,b.shm);
   }
   virtual Brancher* copy(Space& home, bool share) {
     return new (home) CBSBrancher(home,share,*this);
