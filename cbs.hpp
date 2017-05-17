@@ -6,6 +6,41 @@
 
 using namespace Gecode;
 
+typedef __gnu_cxx::hash_map<unsigned int, unsigned int> HashMap;
+
+class SharedHashMap : public SharedHandle {
+protected:
+  class SharedHashMapObject : public SharedHandle::Object {
+  public:
+    HashMap hash_map;
+  public:
+    SharedHashMapObject(void) {std::cout << "1: only one time" << std::endl;}
+    SharedHashMapObject(const SharedHashMapObject& shmo)
+      : hash_map(shmo.hash_map) {std::cout << "2: never" << std::endl;}
+    virtual Object* copy(void) const {
+      std::cout << "3: never" << std::endl;
+      return new SharedHashMapObject(*this);
+    }
+    virtual ~SharedHashMapObject(void) {}
+  };
+public:
+  SharedHashMap(void) {}
+  SharedHashMap(const SharedHashMap& shm)
+    : SharedHandle(shm) {}
+  void init(void) {
+    assert(object() == NULL);
+    std::cout << "4: only one time" << std::endl;
+    object(new SharedHashMapObject());
+  }
+  HashMap* get(void) const {
+    return &static_cast<SharedHashMapObject*>(object())->hash_map;
+  }
+  // some inherited members
+  void update(Space& home, bool share, SharedHandle& sh) {
+    SharedHandle::update(home,share,sh);
+  }
+};
+
 class BranchingHeuristic : public CBS {
 public:
   struct Candidate {
@@ -43,37 +78,54 @@ private:
 
 template<class View>
 class aAvgSD : public BranchingHeuristic {
+private:
+  SharedHashMap positions;
 public:
-  aAvgSD(ViewArray<View>& x) {
-    if (densities_sum == NULL) {
-      minVal = INT_MAX;
-      int maxVal = INT_MIN;
-      for (unsigned int i=0; i<x.size(); i++) {
-        pos[x[i].id()] = i;
-        if (x[i].min() < minVal) minVal = x[i].min();
-        if (x[i].max() > maxVal) maxVal = x[i].max();
-      }
-      assert(minVal != INT_MAX && maxVal != INT_MIN);
+  aAvgSD(Space& home, const ViewArray<View>& x) {
+    assert(densities_sum == NULL);
+    assert(count == NULL);
+    positions.init();
 
-      width = maxVal - minVal + 1;
-      assert(width > 1);
-
-      int size = x.size() * width;
-      densities_sum = heap.alloc<double>(size);
-      count = heap.alloc<int>(size);
+    minVal = INT_MAX;
+    int maxVal = INT_MIN;
+    for (unsigned int i=0; i<x.size(); i++) {
+      (*positions.get())[x[i].id()] = i;
+      if (x[i].min() < minVal) minVal = x[i].min();
+      if (x[i].max() > maxVal) maxVal = x[i].max();
     }
+    assert(minVal != INT_MAX && maxVal != INT_MIN);
 
-    best_candidate.c.var_id = -1;
-    best_candidate.density_moy = 0;
+    width = maxVal - minVal + 1;
+    assert(width > 1);
 
-    for (int i=0; i<pos.size()*width; i++) {
+    int size = x.size() * width;
+    densities_sum = home.alloc<double>(size);
+    count = home.alloc<int>(size);
+    for (int i=0; i<size; i++) {
       densities_sum[i] = 0;
       count[i] = 0;
     }
   }
+  aAvgSD(Space& home, const aAvgSD& a)
+    : positions(a.positions), minVal(a.minVal), width(a.width) {
+    int size = (unsigned int)(*positions.get()).size() * width;
+    densities_sum = home.alloc<double>(size);
+    count = home.alloc<int>(size);
+    memcpy(densities_sum, a.densities_sum, size * sizeof(double));
+    memcpy(count, a.count, size * sizeof(int));
+  }
+  void clear() {
+    best_candidate.c.var_id = -1;
+    best_candidate.density_moy = 0;
+    for (int i=0; i<(*positions.get()).size()*width; i++) {
+      densities_sum[i] = 0;
+      count[i] = 0;
+    }
+
+  }
   virtual void set(unsigned int var_id, int val, double density) {
     assert(densities_sum != NULL);
-    unsigned int i = pos[var_id] * width + val - minVal;
+    unsigned int i = (*positions.get())[var_id] * width + val - minVal;
     densities_sum[i] += density;
     count[i] += 1;
 
@@ -88,11 +140,10 @@ public:
     return best_candidate.c;
   }
 private:
-  static int minVal;
-  static int width;
-  static double *densities_sum;
-  static int *count;
-  static __gnu_cxx::hash_map<unsigned int, unsigned int> pos;
+  int minVal;
+  int width;
+  double *densities_sum;
+  int *count;
 private:
   struct {
     Candidate c;
@@ -100,67 +151,15 @@ private:
   } best_candidate;
 };
 
-typedef __gnu_cxx::hash_map<unsigned int, unsigned int> uIntuIntH;
-
-template<> int aAvgSD<Int::IntView>::minVal = INT_MAX;
-template<> int aAvgSD<Int::IntView>::width = -1;
-template<> double *aAvgSD<Int::IntView>::densities_sum = NULL;
-template<> int *aAvgSD<Int::IntView>::count = NULL;
-template<> uIntuIntH aAvgSD<Int::IntView>::pos = uIntuIntH();
-
-// TODO: On n'a pas besoin de ça ici. Optimisation requise.
-template<> int aAvgSD<Int::BoolView>::minVal = INT_MAX;
-template<> int aAvgSD<Int::BoolView>::width = -1;
-template<> double *aAvgSD<Int::BoolView>::densities_sum = NULL;
-template<> int *aAvgSD<Int::BoolView>::count = NULL;
-template<> uIntuIntH aAvgSD<Int::BoolView>::pos = uIntuIntH();
-
-class SharedHashMap : public SharedHandle {
-protected:
-  class SharedHashMapObject : public SharedHandle::Object {
-  public:
-    typedef __gnu_cxx::hash_map<unsigned int, unsigned int> HashMap;
-    HashMap hash_map;
-  public:
-    SharedHashMapObject(void) {}
-    SharedHashMapObject(const SharedHashMapObject& shmo)
-      : hash_map(shmo.hash_map) {}
-    virtual Object* copy(void) const {
-      return new SharedHashMapObject(*this);
-    }
-    virtual ~SharedHashMapObject(void) {}
-  };
-public:
-  typedef SharedHashMapObject::HashMap HashMap;
-public:
-  SharedHashMap(void) {}
-  void init(void) {
-    assert(object() == NULL);
-    object(new SharedHashMapObject());
-  }
-  HashMap get(void) const {
-    return static_cast<SharedHashMapObject*>(object())->hash_map;
-  }
-  void set(HashMap hm) {
-    static_cast<SharedHashMapObject*>(object())->hash_map = hm;
-  }
-  // some inherited members
-  void update(Space& home, bool share, SharedHandle& sh) {
-    SharedHandle::update(home,share,sh);
-  }
-};
-
 
 template<class View>
 class CBSBrancher : public Brancher {
 protected:
-  SharedHashMap shm;
   ViewArray<View> x;
+  aAvgSD<View> heur;
 public:
   CBSBrancher(Home home, ViewArray<View>& x0)
-    : Brancher(home), x(x0) {
-    shm.init();
-  }
+    : Brancher(home), x(x0), heur(home,x0) {}
   static void post(Home home, ViewArray<View>& x) {
     (void) new (home) CBSBrancher(home,x);
   }
@@ -169,9 +168,8 @@ public:
     return sizeof(*this);
   }
   CBSBrancher(Space& home, bool share, CBSBrancher& b)
-    : Brancher(home,share,b) {
+    : Brancher(home,share,b), heur(home, b.heur) {
     x.update(home,share,b.x);
-    shm.update(home,share,b.shm);
   }
   virtual Brancher* copy(Space& home, bool share) {
     return new (home) CBSBrancher(home,share,*this);
@@ -186,8 +184,7 @@ public:
   }
   // choice
   virtual Choice* choice(Space& home) {
-//    aAvgSD<View> heur(x);
-    MaxSD heur;
+    heur.clear();
     for (Propagators p(home, PropagatorGroup::all); p(); ++p)
       p.propagator().cbs(home, &heur);
 
