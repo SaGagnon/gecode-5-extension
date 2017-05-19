@@ -139,6 +139,9 @@ public:
   virtual Candidate get(void) {
     return best_candidate.c;
   }
+  ~aAvgSD() {
+    positions.~SharedHashMap();
+  }
 private:
   int minVal;
   int width;
@@ -159,11 +162,16 @@ protected:
   aAvgSD<View> heur;
 public:
   CBSBrancher(Home home, ViewArray<View>& x0)
-    : Brancher(home), x(x0), heur(home,x0) {}
+    : Brancher(home), x(x0), heur(home,x0) {
+    // Because we use heur and must the desctructor of the SharedHashMap
+    home.notice(*this,AP_DISPOSE);
+  }
   static void post(Home home, ViewArray<View>& x) {
     (void) new (home) CBSBrancher(home,x);
   }
   virtual size_t dispose(Space& home) {
+    home.ignore(*this, AP_DISPOSE);
+    heur.~aAvgSD();
     (void) Brancher::dispose(home);
     return sizeof(*this);
   }
