@@ -192,45 +192,47 @@ public:
     int idx;
     int val;
   };
-  // TODO: Quoi faire si multithread? Est-ce que je fais juste clear
-  // mon data global....????
-//  static virtual void dispose() = 0;
+private:
+  int current_prop;
+protected:
+  SharedHashMap positions;
+  Log *log;
+public:
+  BranchingHeuristic(Space& home) {
+    positions.init();
+  }
+  BranchingHeuristic(Space& home, const BranchingHeuristic& bh)
+    : positions(bh.positions) {}
+  void set_log(Log *_log) {
+    assert(log != NULL);
+    log = _log;
+  }
+  void set_current_prop(unsigned int prop_id) {
+    current_prop = prop_id;
+  }
+  virtual void set(unsigned int var_id, int val, double density) {
+    assert(current_prop != -1);
+    Record r; r.var_id=var_id; r.val=val; r.density=density;
+    // Number of records for the current propagator
+    size_t *nb_record = &(*log)[current_prop].first;
+    (*log)[current_prop].second[*nb_record] = r;
+    *nb_record = *nb_record + 1;
+  }
+
   virtual Candidate get(void) = 0;
 };
 
-//class MaxSD : public BranchingHeuristic {
-//public:
-//  MaxSD() {
-//    best_candidate.c.idx = -1;
-//    best_candidate.density = 0;
-//  }
-//  virtual void set(unsigned int var_id, int val, double density) {
-//    if (density > best_candidate.density) {
-//      best_candidate.c.idx = var_id;
-//      best_candidate.c.val = val;
-//      best_candidate.density = density;
-//    }
-//  }
-//  virtual Candidate get(void) {
-//    return best_candidate.c;
-//  }
-//private:
-//  struct {
-//    Candidate c;
-//    double density;
-//  } best_candidate;
-//};
 
 template<class View>
 class aAvgSD : public BranchingHeuristic {
 private:
-  SharedHashMap positions;
-  Log *log;
-  int current_prop;
+  int minVal;
+  int width;
+  SharedTable<double> densities_sum;
+  SharedTable<int> count;
 public:
-  aAvgSD(Space& home, const ViewArray<View>& x) {
-    positions.init();
-
+  aAvgSD(Space& home, const ViewArray<View>& x)
+    : BranchingHeuristic(home) {
     minVal = INT_MAX;
     int maxVal = INT_MIN;
     for (unsigned int i=0; i<x.size(); i++) {
@@ -247,42 +249,14 @@ public:
 
     densities_sum.init(size);
     count.init(size);
-//    densities_sum = new double[size];
-//    count = new int[size];
     for (int i=0; i<size; i++) {
       densities_sum[i] = 0;
       count[i] = 0;
     }
   }
   aAvgSD(Space& home, const aAvgSD& a)
-    : positions(a.positions), minVal(a.minVal), width(a.width),
-      densities_sum(a.densities_sum), count(a.count) {
-//    int size = (unsigned int)(*positions.get()).size() * width;
-//    densities_sum = home.alloc<double>(size);
-//    count = home.alloc<int>(size);
-//    memcpy(densities_sum, a.densities_sum, size * sizeof(double));
-//    memcpy(count, a.count, size * sizeof(int));
-  }
-  void setup(Log *_log) {
-    log = _log;
-//    current_prop = -1;
-//
-//    best_candidate.c.var_id = -1;
-//    best_candidate.density_moy = 0;
-
-  }
-  void set_current_prop(int _current_prop) {
-    current_prop = _current_prop;
-  }
-  virtual void set(unsigned int var_id, int val, double density) {
-    assert(current_prop != -1);
-    //TODO changer ça dans une interface.
-    Record r; r.var_id=var_id; r.val=val; r.density=density;
-    size_t *count = &(*log)[current_prop].first;
-    (*log)[current_prop].second[*count] = r;
-    // TODO: essayer de mettre ça plus clean ici. (*count)++ ???
-    *count = *count + 1;
-  }
+    : BranchingHeuristic(home,a), minVal(a.minVal), width(a.width),
+      densities_sum(a.densities_sum), count(a.count) {}
   virtual Candidate get(void) {
     // clearing
     for (int i=0; i<(*positions.get()).size()*width; i++) {
@@ -299,11 +273,8 @@ public:
         Record r = it->second.second[i];
 
         unsigned int idx = (*positions.get())[r.var_id];
-//        if (idx==552 && r.val==18) {
-//          printf("Log: prop=%i, pos=%i, val=%i, dens=%f\n",prop_id,idx,r.val,r.density);
-//        }
-
         unsigned int pos = (*positions.get())[r.var_id] * width + r.val - minVal;
+
         densities_sum[pos] += r.density;
         count[pos] += 1;
       }
@@ -326,19 +297,9 @@ public:
         }
       }
     }
-
-
-//    printf("dens:%f, ",best_density_moy);
     return c;
   }
-private:
-  int minVal;
-  int width;
-  SharedTable<double> densities_sum;
-  SharedTable<int> count;
 };
-
-//******************************************************************************
 
 template<class View>
 class CBSBrancher : public Brancher {
@@ -416,52 +377,9 @@ public:
       }
     }
 
-    //--------------------------------------------------------------------------
-//    std::vector<unsigned int> __active_props;
-//    for (auto x : activeProps)
-//      __active_props.push_back(x.first);
-//    std::sort(__active_props.begin(), __active_props.end());
-//
-//    std::vector<unsigned int> __space_active_props;
-//      for (Propagators p(home, PropagatorGroup::all); p(); ++p)
-//        __space_active_props.push_back(p.propagator().id());
-//    std::sort(__space_active_props.begin(), __space_active_props.end());
-//    assert(__active_props.size() == __space_active_props.size());
-
-//    for (int i=0; i<__active_props.size(); i++)
-//      assert(__active_props[i] == __space_active_props[i]);
-    //--------------------------------------------------------------------------
-//
-//    printf("in log                   :");
-//    for (auto x : log)
-//      printf("%i, ",x.first);
-//    printf("\n");
-//
-//    printf("active props (subscribed):");
-//    for (auto x : activeProps)
-//      printf("%i, ",x.first);
-//    printf("\n");
-//
-//    printf("active props (space)     :");
-//    for (auto x : __space_active_props)
-//      printf("%i, ",x);
-//    printf("\n");
-//
-//    printf("changed props            :");
-//    for (auto x : *changedProps.get())
-//      printf("%i, ",x);
-//    printf("\n");
-
-//    Log backup = log;
-
     // We delete log elements corresponding to non active propagators
     {
-//      __gnu_cxx::hash_set<unsigned int> activeProps;
       std::vector<unsigned int> propsToDelete;
-
-      // Active propagators
-//      for (Propagators p(home, PropagatorGroup::all); p(); ++p)
-//        activeProps.insert(p.propagator().id());
 
       // Propagators to delete (not active and in log)
       for (Log::iterator it = log.begin(); it != log.end(); ++it)
@@ -480,17 +398,14 @@ public:
 
     // We specify the log that will be modified when the propagators use the
     // CBS::set()
-    heur.setup(&log);
+    heur.set_log(&log);
     for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
-//      if (p.propagator().id()==36) printf("BOUYA\n");
       if (!p.propagator().cbs(home,NULL)) continue;
       unsigned int prop_id = p.propagator().id();
       // Activity in propagator since last branching
       bool changed = changedProps.contains(prop_id);
       // Propagator already in the log?
       bool in_log = log.find(prop_id) != log.end();
-
-//      if (prop_id==36) printf("changed=%i, in_log=%i\n",changed,in_log);
 
       if (in_log) {
         if (changed)
@@ -516,22 +431,9 @@ public:
 
     // We find the choice.
     BranchingHeuristic::Candidate c = heur.get();
-//    log=backup;
-
-
-//    printf("idx:%i, val:%i\n",c.idx,c.val);
-
-//    exit(-1);
-//    for (int i=0; i<x.size(); i++)
-//      if (x[i].id() == c.var_id)
-//        return new PosValChoice<int>(*this,2,i,c.val);
     assert(!x[c.idx].assigned());
     assert(x[c.idx].in(c.val));
     return new PosValChoice<int>(*this,2,c.idx,c.val);
-
-
-    GECODE_NEVER;
-    return NULL;
   }
   virtual Choice* choice(const Space&, Archive& e) {
     int pos, val;
