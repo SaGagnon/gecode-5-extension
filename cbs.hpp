@@ -8,60 +8,54 @@
 
 using namespace Gecode;
 
-
-class SharedPropChanged : public LocalHandle {
+class ChangedPropagators : public LocalHandle {
 protected:
-  class SharedPropChangedObject : public LocalObject {
+  class ChangedPropagatorO : public LocalObject {
   public:
     typedef __gnu_cxx::hash_set<unsigned int, __gnu_cxx::hash<unsigned int>,
       __gnu_cxx::equal_to<unsigned int>,
       Gecode::space_allocator<unsigned int> > Set;
     Set changed;
   public:
-    SharedPropChangedObject(Space& home)
+    ChangedPropagatorO(Space& home)
       : LocalObject(home),
         changed(Set::size_type(), Set::hasher(), Set::key_equal(),
-                Set::allocator_type(home)) {
-    }
-    SharedPropChangedObject(Space& home, bool share,
-                            SharedPropChangedObject& o)
+                Set::allocator_type(home)) {}
+    ChangedPropagatorO(Space& home, bool share,
+                            ChangedPropagatorO& o)
       : LocalObject(home,share,o),
         changed(o.changed.begin(), o.changed.end(),
                 Set::size_type(), Set::hasher(), Set::key_equal(),
                 Set::allocator_type(home)) {}
     virtual LocalObject* copy(Space& home, bool share) {
-      return new (home) SharedPropChangedObject(home,share,*this);
-    }
-    // TODO: Essayer de delete ca. Ca devrait rien faire.
-    virtual size_t dispose(Space& home) {
-      return sizeof(*this);
+      return new (home) ChangedPropagatorO(home,share,*this);
     }
   };
 public:
-  SharedPropChanged(void)
+  ChangedPropagators(void)
     : LocalHandle() {}
-  SharedPropChanged(Space& home)
-    : LocalHandle(new (home) SharedPropChangedObject(home)) {}
-  SharedPropChanged(const SharedPropChanged& spc)
+  ChangedPropagators(Space& home)
+    : LocalHandle(new (home) ChangedPropagatorO(home)) {}
+  ChangedPropagators(const ChangedPropagators& spc)
     : LocalHandle(spc) {}
   void insert(unsigned int prop_id) {
-    SharedPropChangedObject* o =
-      static_cast<SharedPropChangedObject*>(object());
+    ChangedPropagatorO* o =
+      static_cast<ChangedPropagatorO*>(object());
     o->changed.insert(prop_id);
   }
   bool contains(unsigned int prop_id) const {
-    SharedPropChangedObject* o =
-      static_cast<SharedPropChangedObject*>(object());
+    ChangedPropagatorO* o =
+      static_cast<ChangedPropagatorO*>(object());
     return o->changed.find(prop_id) != o->changed.end();
   }
   void clear() {
-    SharedPropChangedObject* o =
-      static_cast<SharedPropChangedObject*>(object());
+    ChangedPropagatorO* o =
+      static_cast<ChangedPropagatorO*>(object());
     o->changed.clear();
   }
-  SharedPropChangedObject::Set* get(void) {
-    SharedPropChangedObject* o =
-      static_cast<SharedPropChangedObject*>(object());
+  ChangedPropagatorO::Set* get(void) {
+    ChangedPropagatorO* o =
+      static_cast<ChangedPropagatorO*>(object());
     return &o->changed;
   }
 };
@@ -72,11 +66,11 @@ protected:
   using NaryPropagator<View,PC_GEN_NONE>::x;
 
   Council<ViewAdvisor<View>> c;
-  SharedPropChanged changedProps;
+  ChangedPropagators changedProps;
 
   /// Constructor for posting
-  ViewUpdateLooker(Home home, ViewArray<View>& x, const SharedPropChanged& spc)
-    : NaryPropagator<View,PC_GEN_NONE>(home,x), c(home), changedProps(spc) {
+  ViewUpdateLooker(Home home, ViewArray<View>& x, const ChangedPropagators& cp)
+    : NaryPropagator<View,PC_GEN_NONE>(home,x), c(home), changedProps(cp) {
     for (int i=0; i<x.size(); i++) {
       (void) new (home) ViewAdvisor<View>(home, *this, c, x[i]);
     }
@@ -89,17 +83,15 @@ protected:
   }
 public:
   static ExecStatus post(Home home, ViewArray<View>& x,
-                         const SharedPropChanged & spc) {
-    (void) new (home) ViewUpdateLooker<View>(home,x,spc);
+                         const ChangedPropagators & cp) {
+    (void) new (home) ViewUpdateLooker<View>(home,x,cp);
     return ES_OK;
   }
   virtual ExecStatus advise(Space& home, Advisor &_a, const Delta& d) {
     ViewAdvisor<View>& a(static_cast<ViewAdvisor<View>&>(_a));
     View v(a.view());
-//    std::cout << "advise ";
-    for (SubscribedPropagators sp(v); sp(); ++sp) {
+    for (SubscribedPropagators sp(v); sp(); ++sp)
       changedProps.insert(sp.propagator().id());
-    }
   }
   virtual ExecStatus propagate(Space&, const ModEventDelta&) {
     return ES_FIX;
@@ -117,72 +109,36 @@ public:
   }
 };
 
-
-//******************************************************************************
-
 struct Record { unsigned int var_id; int val; double density; };
 typedef __gnu_cxx::hash_map< unsigned int, std::pair<size_t,Record*>,
   __gnu_cxx::hash<unsigned int>, __gnu_cxx::equal_to<unsigned int>,
   Gecode::space_allocator<unsigned int> > Log;
 
-class SharedHashMap : public SharedHandle {
+class VarIdToPos : public SharedHandle {
 protected:
-  class SharedHashMapObject : public SharedHandle::Object {
+  class VarIdToPosO : public SharedHandle::Object {
   public:
     typedef __gnu_cxx::hash_map<unsigned int, unsigned int> HashMap;
     HashMap hash_map;
   public:
-    SharedHashMapObject(void) {}
-    SharedHashMapObject(const SharedHashMapObject& shmo)
-      : hash_map(shmo.hash_map) {}
+    VarIdToPosO(void) {}
+    VarIdToPosO(const VarIdToPosO& o)
+      : hash_map(o.hash_map) {}
     virtual Object* copy(void) const {
-      return new SharedHashMapObject(*this);
+      return new VarIdToPosO(*this);
     }
-    virtual ~SharedHashMapObject(void) {}
+    virtual ~VarIdToPosO(void) {}
   };
 public:
-  SharedHashMap(void) {}
-  SharedHashMap(const SharedHashMap& shm)
-    : SharedHandle(shm) {}
+  VarIdToPos(void) {}
+  VarIdToPos(const VarIdToPos& v)
+    : SharedHandle(v) {}
   void init(void) {
     assert(object() == NULL);
-    object(new SharedHashMapObject());
+    object(new VarIdToPosO());
   }
-  SharedHashMapObject::HashMap* get(void) const {
-    return &static_cast<SharedHashMapObject*>(object())->hash_map;
-  }
-};
-
-template<typename T>
-class SharedTable : public SharedHandle {
-protected:
-  class SharedTableObject : public SharedHandle::Object {
-  public:
-    typedef __gnu_cxx::hash_map<unsigned int, unsigned int> HashMap;
-    T *table;
-  public:
-    SharedTableObject(size_t size) {
-      table = new T[size];
-    }
-    SharedTableObject(const SharedTableObject& sto)
-      : table(sto.table) {}
-    virtual Object* copy(void) const {
-      return new SharedTableObject(*this);
-    }
-    virtual ~SharedTableObject(void) {
-      delete[] table;
-    }
-  };
-public:
-  SharedTable(void) {}
-  SharedTable(const SharedTable& st)
-    : SharedHandle(st) {}
-  void init(size_t size) {
-    assert(object() == NULL);
-    object(new SharedTableObject(size));
-  }
-  T& operator[](int i) {
-    return static_cast<SharedTableObject*>(object())->table[i];
+  VarIdToPosO::HashMap* get(void) const {
+    return &static_cast<VarIdToPosO*>(object())->hash_map;
   }
 };
 
@@ -195,7 +151,7 @@ public:
 private:
   int current_prop;
 protected:
-  SharedHashMap positions;
+  VarIdToPos positions;
   Log *log;
 public:
   BranchingHeuristic(Space& home) {
@@ -222,14 +178,13 @@ public:
   virtual Candidate get(void) = 0;
 };
 
-
 template<class View>
 class aAvgSD : public BranchingHeuristic {
 private:
   int minVal;
   int width;
-  SharedTable<double> densities_sum;
-  SharedTable<int> count;
+  SharedArray<double> densities_sum;
+  SharedArray<int> count;
 public:
   aAvgSD(Space& home, const ViewArray<View>& x)
     : BranchingHeuristic(home) {
@@ -245,7 +200,7 @@ public:
     width = maxVal - minVal + 1;
     assert(width > 1);
 
-    size_t size = (size_t)x.size() * width;
+    int size = x.size() * width;
 
     densities_sum.init(size);
     count.init(size);
@@ -306,10 +261,10 @@ class CBSBrancher : public Brancher {
 protected:
   ViewArray<View> x;
   aAvgSD<View> heur;
-  SharedPropChanged changedProps;
+  ChangedPropagators changedProps;
   Log log;
 public:
-  CBSBrancher(Home home, ViewArray<View>& x0, const SharedPropChanged& spc)
+  CBSBrancher(Home home, ViewArray<View>& x0, const ChangedPropagators& spc)
     : Brancher(home), x(x0), heur(home,x0), changedProps(spc),
       log(Log::size_type(), Log::hasher(), Log::key_equal(),
           Log::allocator_type(home)) {
@@ -317,7 +272,7 @@ public:
     home.notice(*this,AP_DISPOSE);
   }
   static void post(Home home, ViewArray<View>& x,
-                   const SharedPropChanged& spc) {
+                   const ChangedPropagators& spc) {
     (void) new (home) CBSBrancher(home,x,spc);
   }
   virtual size_t dispose(Space& home) {
@@ -325,7 +280,6 @@ public:
     // ~aAvgSD() calls ~SharedHashMap() which calls ~SharedHashMapObject() to
     // deallocate the hash map when the refcount of SharedHashMapObject is 0
     heur.~aAvgSD();
-//    log.~Log();
     (void) Brancher::dispose(home);
     return sizeof(*this);
   }
@@ -355,7 +309,7 @@ public:
     return false;
   }
   // choice
-  virtual Choice* choice(Space& home) {
+  virtual const Choice* choice(Space& home) {
     // Active propagators and the size we need for their log.
     // TODO: Est-ce que je peux avoir les active props de cette manière?
     // TODO: Je pense que oui. Les propagateurs disabled sont seulement mis
@@ -435,7 +389,7 @@ public:
     assert(x[c.idx].in(c.val));
     return new PosValChoice<int>(*this,2,c.idx,c.val);
   }
-  virtual Choice* choice(const Space&, Archive& e) {
+  virtual const Choice* choice(const Space&, Archive& e) {
     int pos, val;
     e >> pos >> val;
     return new PosValChoice<int>(*this,2,pos,val);
@@ -444,14 +398,10 @@ public:
   virtual ExecStatus commit(Space& home, const Choice& c, unsigned int a) {
     const PosValChoice<int>& pvc = static_cast<const PosValChoice<int>&>(c);
     int pos=pvc.pos().pos, val=pvc.val();
-    if (a == 0) {
-//      printf("x[%i]=%i\n\n",pos,val);
+    if (a == 0)
       return me_failed(x[pos].eq(home,val)) ? ES_FAILED : ES_OK;
-    }
-    else {
-//      printf("x[%i]!=%i\n\n",pos,val);
+    else
       return me_failed(x[pos].nq(home,val)) ? ES_FAILED : ES_OK;
-    }
   }
   // print
   virtual void print(const Space& home, const Choice& c, unsigned int a,
@@ -473,7 +423,7 @@ enum CBSStrategy {
 void cbsbranch(Home home, const IntVarArgs& x) {
   if (home.failed()) return;
   ViewArray<Int::IntView> y(home,x);
-  SharedPropChanged spc(home);
+  ChangedPropagators spc(home);
   ViewUpdateLooker<Int::IntView>::post(home,y,spc);
   CBSBrancher<Int::IntView>::post(home,y,spc);
 }
@@ -481,7 +431,7 @@ void cbsbranch(Home home, const IntVarArgs& x) {
 void cbsbranch(Home home, const BoolVarArgs& x) {
   if (home.failed()) return;
   ViewArray<Int::BoolView> y(home,x);
-  SharedPropChanged spc(home);
+  ChangedPropagators spc(home);
   ViewUpdateLooker<Int::BoolView>::post(home,y,spc);
   CBSBrancher<Int::BoolView>::post(home,y,spc);
 }
