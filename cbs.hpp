@@ -61,31 +61,33 @@ public:
 /**
  * \brief Class for tracking changes in variable domains during propagation
  *
- * ViewUpdateLooker is a propagtor whose only goal is to track domain changes in
- * its variables via advisors; it does not do any propagation.
+ * ViewUpdateLooker is a propagator whose only goal is to track domain changes
+ * in its variables via advisors; it does not do any propagation.
  *
  * Each time a variable is modified, ViewUpdateLooker receives a notification
  * via its advise method. By modifying changedProp accordingly, we can transfer
  * this information to the BranchingHeuristic before making a choice.
  *
- * We inherit T
+ * PC_GEN_NONE means that the propagator is not scheduled for propagation when
+ * one of its variable is modified.
  */
 template<class View>
 class ViewUpdateLooker : public NaryPropagator<View,PC_GEN_NONE> {
-protected:
   using NaryPropagator<View,PC_GEN_NONE>::x;
-
+protected:
+  // An advisor only concern a single variable. For this reason, we must have
+  // a council to manage every advisor for each of our variables.
   Council<ViewAdvisor<View>> c;
+  // Shared object with BranchingHeuristic to track changes in variable domains.
   ChangedPropagators changedProps;
 
-  /// Constructor for posting
+  // Constructor for posting
   ViewUpdateLooker(Home home, ViewArray<View>& x, const ChangedPropagators& cp)
     : NaryPropagator<View,PC_GEN_NONE>(home,x), c(home), changedProps(cp) {
-    for (int i=0; i<x.size(); i++) {
+    for (int i=0; i<x.size(); i++)
       (void) new (home) ViewAdvisor<View>(home, *this, c, x[i]);
-    }
   }
-  /// Constructor for cloning \a p
+  // Constructor for cloning
   ViewUpdateLooker(Space& home, bool share, ViewUpdateLooker<View>& p)
     : NaryPropagator<View,PC_GEN_NONE>(home,share,p) {
     c.update(home,share,p.c);
@@ -102,17 +104,26 @@ public:
     View v(a.view());
     for (SubscribedPropagators sp(v); sp(); ++sp)
       changedProps.insert(sp.propagator().id());
+
+    // If the view is assigned, we don't need its advisor anymore.
+    if (a.view().assigned())
+      a.dispose(home,c);
+
+    // We can delete the propagator if we have no advisor left
+    return c.empty() ? home.ES_SUBSUMED(*this) : ES_FIX;
   }
   virtual ExecStatus propagate(Space&, const ModEventDelta&) {
+    // The propagator is not subscribed to any of its variable. Thus, this
+    // method won't be called.
+    GECODE_NEVER;
     return ES_FIX;
-  }
-  virtual PropCost cost(const Space&, const ModEventDelta&) const {
-    return PropCost::record();
   }
   virtual Actor* copy(Space& home, bool share) {
     return new (home) ViewUpdateLooker<View>(home,share,*this);
   }
   virtual size_t dispose(Space& home) {
+    for (Advisors<ViewAdvisor<View>> va(c); va(); ++va)
+      va.advisor().dispose(home,c);
     c.dispose(home);
     (void) NaryPropagator<View,PC_GEN_NONE>::dispose(home);
     return sizeof(*this);
