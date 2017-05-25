@@ -58,6 +58,18 @@ public:
   }
 };
 
+/**
+ * \brief Class for tracking changes in variable domains during propagation
+ *
+ * ViewUpdateLooker is a propagtor whose only goal is to track domain changes in
+ * its variables via advisors; it does not do any propagation.
+ *
+ * Each time a variable is modified, ViewUpdateLooker receives a notification
+ * via its advise method. By modifying changedProp accordingly, we can transfer
+ * this information to the BranchingHeuristic before making a choice.
+ *
+ * We inherit T
+ */
 template<class View>
 class ViewUpdateLooker : public NaryPropagator<View,PC_GEN_NONE> {
 protected:
@@ -177,7 +189,7 @@ public:
     (*log)[current_prop].second[(*nb_record)++] = r;
   }
 
-  virtual Candidate get(void) = 0;
+  virtual Candidate get(Space& home) = 0;
 };
 
 template<class View>
@@ -219,25 +231,29 @@ public:
     densities_sum.update(home,share,a.densities_sum);
     count.update(home,share,a.count);
   }
-  virtual Candidate get(void) {
-    // clearing
+  virtual Candidate get(Space& home) {
+    // densities_sum and count are shared between all the spaces. This way, we
+    // don't need to allocate memory each time we want to calculate a new
+    // choice. This also mean that we have to reset everything to 0
     for (int i=0; i<(*positions.get()).size()*width; i++) {
       densities_sum[i] = 0;
       count[i] = 0;
     }
 
+    // isVarSub is true if it is inside at least one propagator that supports
+    // cbs. If we have no record in the log for this variable, it will be false
+    // and we don't want to consider it in our choice recommendation
+    __gnu_cxx::hash_set<unsigned int> isVarSub;
+
     // For every propagator in the log
     for (Log::iterator it=log->begin(); it!=log->end(); ++it) {
-      // For every record concerning the propagator
       unsigned int prop_id = it->first;
       size_t nb_records = it->second.first;
+      // Aggregation for every record concerning the propagator (i.e. every
+      // (variable,value) pair and their corresponding density)
       for (unsigned int i=0; i<nb_records; ++i) {
         Record r = it->second.second[i];
-
-        assert((*positions.get()).find(r.var_id) != (*positions.get()).end());
-        unsigned int idx = (*positions.get())[r.var_id];
         unsigned int pos = (*positions.get())[r.var_id] * width + r.val - minVal;
-
         densities_sum[pos] += r.density;
         count[pos] += 1;
       }
@@ -248,9 +264,22 @@ public:
     double best_density_moy = 0;
 
     for (int i=0; i<x.size(); i++) {
+
+      bool instrumented = false;
+      for (SubscribedPropagators sp(x[i]); sp(); ++sp) {
+        if (sp.propagator().cbs(home,NULL)) {
+          instrumented = true;
+          break;
+        }
+      }
+      if (!instrumented) continue;
+
       if (x[i].assigned()) continue;
       for (Int::ViewValues<View> val(x[i]); val(); ++val) {
         int idx = i*width + val.val() - minVal;
+//        if (count[idx]==0) {
+//          printf("COUNT=0. prop_id=%i\n",);
+//        }
         assert(count[idx] != 0);
         double dens_moy = densities_sum[idx] / (double)count[idx];
         if (dens_moy > best_density_moy) {
@@ -393,7 +422,7 @@ public:
     changedProps.clear();
 
     // We find the choice.
-    Candidate c = heur.get();
+    Candidate c = heur.get(home);
     static int count=0;
     assert(!x[c.idx].assigned());
     assert(x[c.idx].in(c.val));
