@@ -240,10 +240,13 @@ public:
     double best_density_moy = 0;
 
     // For each variable
+    // TODO: La manière qu'on itère ici c'est con... Il faudrait utiliser le domaine des variables...
     for (int i=0; i<(*positions.get()).size(); i++) {
+      // TODO: Mettre les variables dans aAvg pour pouvoir skip les variables non assignées!!!
       // For each value
       for (int j=0; j<width; j++) {
         int idx = i*width + j;
+        if (count[idx] == 0) continue;
         double dens_moy = densities_sum[idx] / (double)count[idx];
         if (dens_moy > best_density_moy) {
           c.idx = i;
