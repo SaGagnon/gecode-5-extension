@@ -114,7 +114,7 @@ main(int argc, char* argv[]) {
     return -1;
   }
 
-  Script::run<LatinSquare,DFS,SizeOptions>(opt);
+  Script::run<LatinSquare,BAB,SizeOptions>(opt);
   return 0;
 }
 

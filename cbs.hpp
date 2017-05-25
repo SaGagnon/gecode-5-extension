@@ -36,8 +36,6 @@ public:
     : LocalHandle() {}
   ChangedPropagators(Space& home)
     : LocalHandle(new (home) ChangedPropagatorO(home)) {}
-  ChangedPropagators(const ChangedPropagators& spc)
-    : LocalHandle(spc) {}
   void insert(unsigned int prop_id) {
     ChangedPropagatorO* o =
       static_cast<ChangedPropagatorO*>(object());
@@ -131,8 +129,6 @@ protected:
   };
 public:
   VarIdToPos(void) {}
-  VarIdToPos(const VarIdToPos& v)
-    : SharedHandle(v) {}
   void init(void) {
     assert(object() == NULL);
     object(new VarIdToPosO());
@@ -157,8 +153,9 @@ public:
   BranchingHeuristic(Space& home) {
     positions.init();
   }
-  BranchingHeuristic(Space& home, const BranchingHeuristic& bh)
-    : positions(bh.positions) {}
+  BranchingHeuristic(Space& home, bool share, BranchingHeuristic& bh) {
+    positions.update(home,share,bh.positions);
+  }
   void set_log(Log *_log) {
     assert(_log != NULL);
     log = _log;
@@ -209,9 +206,11 @@ public:
       count[i] = 0;
     }
   }
-  aAvgSD(Space& home, const aAvgSD& a)
-    : BranchingHeuristic(home,a), minVal(a.minVal), width(a.width),
-      densities_sum(a.densities_sum), count(a.count) {}
+  aAvgSD(Space& home, bool share, aAvgSD& a)
+    : BranchingHeuristic(home,share,a), minVal(a.minVal), width(a.width) {
+    densities_sum.update(home,share,a.densities_sum);
+    count.update(home,share,a.count);
+  }
   virtual Candidate get(void) {
     // clearing
     for (int i=0; i<(*positions.get()).size()*width; i++) {
@@ -227,6 +226,7 @@ public:
       for (unsigned int i=0; i<nb_records; ++i) {
         Record r = it->second.second[i];
 
+        assert((*positions.get()).find(r.var_id) != (*positions.get()).end());
         unsigned int idx = (*positions.get())[r.var_id];
         unsigned int pos = (*positions.get())[r.var_id] * width + r.val - minVal;
 
@@ -287,7 +287,7 @@ public:
     return sizeof(*this);
   }
   CBSBrancher(Space& home, bool share, CBSBrancher& b)
-    : Brancher(home,share,b), heur(home, b.heur),
+    : Brancher(home,share,b), heur(home, share, b.heur),
       log(b.log.begin(), b.log.end(), Log::size_type(), Log::hasher(),
           Log::key_equal(), Log::allocator_type(home)) {
     x.update(home,share,b.x);
@@ -388,6 +388,7 @@ public:
 
     // We find the choice.
     BranchingHeuristic::Candidate c = heur.get();
+    static int count=0;
     assert(!x[c.idx].assigned());
     assert(x[c.idx].in(c.val));
     return new PosValChoice<int>(*this,2,c.idx,c.val);
