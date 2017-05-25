@@ -138,6 +138,7 @@ public:
   }
 };
 
+template<class View>
 class BranchingHeuristic : public CBS {
 public:
   struct Candidate {
@@ -150,8 +151,10 @@ protected:
   VarIdToPos positions;
   Log *log;
 public:
-  BranchingHeuristic(Space& home) {
+  BranchingHeuristic(Space& home, const ViewArray<View>& x) {
     positions.init();
+    for (unsigned int i=0; i<x.size(); i++)
+      (*positions.get())[x[i].id()] = i;
   }
   BranchingHeuristic(Space& home, bool share, BranchingHeuristic& bh) {
     positions.update(home,share,bh.positions);
@@ -176,7 +179,11 @@ public:
 };
 
 template<class View>
-class aAvgSD : public BranchingHeuristic {
+class aAvgSD : public BranchingHeuristic<View> {
+  typedef typename BranchingHeuristic<View>::Candidate Candidate;
+
+  using BranchingHeuristic<View>::positions;
+  using BranchingHeuristic<View>::log;
 private:
   int minVal;
   int width;
@@ -184,11 +191,10 @@ private:
   SharedArray<int> count;
 public:
   aAvgSD(Space& home, const ViewArray<View>& x)
-    : BranchingHeuristic(home) {
+    : BranchingHeuristic<View>(home,x) {
     minVal = INT_MAX;
     int maxVal = INT_MIN;
     for (unsigned int i=0; i<x.size(); i++) {
-      (*positions.get())[x[i].id()] = i;
       if (x[i].min() < minVal) minVal = x[i].min();
       if (x[i].max() > maxVal) maxVal = x[i].max();
     }
@@ -207,7 +213,7 @@ public:
     }
   }
   aAvgSD(Space& home, bool share, aAvgSD& a)
-    : BranchingHeuristic(home,share,a), minVal(a.minVal), width(a.width) {
+    : BranchingHeuristic<View>(home,share,a), minVal(a.minVal), width(a.width) {
     densities_sum.update(home,share,a.densities_sum);
     count.update(home,share,a.count);
   }
@@ -261,6 +267,7 @@ public:
 
 template<class View>
 class CBSBrancher : public Brancher {
+  typedef typename BranchingHeuristic<View>::Candidate Candidate;
 protected:
   ViewArray<View> x;
   aAvgSD<View> heur;
@@ -387,7 +394,7 @@ public:
     changedProps.clear();
 
     // We find the choice.
-    BranchingHeuristic::Candidate c = heur.get();
+    Candidate c = heur.get();
     static int count=0;
     assert(!x[c.idx].assigned());
     assert(x[c.idx].in(c.val));
