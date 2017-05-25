@@ -148,15 +148,18 @@ public:
 private:
   int current_prop;
 protected:
+  ViewArray<View> x;
   VarIdToPos positions;
   Log *log;
 public:
-  BranchingHeuristic(Space& home, const ViewArray<View>& x) {
+  BranchingHeuristic(Space& home, const ViewArray<View>& x0)
+    : x(x0) {
     positions.init();
     for (unsigned int i=0; i<x.size(); i++)
       (*positions.get())[x[i].id()] = i;
   }
   BranchingHeuristic(Space& home, bool share, BranchingHeuristic& bh) {
+    x.update(home,share,bh.x);
     positions.update(home,share,bh.positions);
   }
   void set_log(Log *_log) {
@@ -171,8 +174,7 @@ public:
     Record r; r.var_id=var_id; r.val=val; r.density=density;
     // Number of records for the current propagator
     size_t *nb_record = &(*log)[current_prop].first;
-    (*log)[current_prop].second[*nb_record] = r;
-    *nb_record = *nb_record + 1;
+    (*log)[current_prop].second[(*nb_record)++] = r;
   }
 
   virtual Candidate get(void) = 0;
@@ -181,7 +183,7 @@ public:
 template<class View>
 class aAvgSD : public BranchingHeuristic<View> {
   typedef typename BranchingHeuristic<View>::Candidate Candidate;
-
+  using BranchingHeuristic<View>::x;
   using BranchingHeuristic<View>::positions;
   using BranchingHeuristic<View>::log;
 private:
@@ -245,18 +247,15 @@ public:
     c.idx = -1;
     double best_density_moy = 0;
 
-    // For each variable
-    // TODO: La manière qu'on itère ici c'est con... Il faudrait utiliser le domaine des variables...
-    for (int i=0; i<(*positions.get()).size(); i++) {
-      // TODO: Mettre les variables dans aAvg pour pouvoir skip les variables non assignées!!!
-      // For each value
-      for (int j=0; j<width; j++) {
-        int idx = i*width + j;
-        if (count[idx] == 0) continue;
+    for (int i=0; i<x.size(); i++) {
+      if (x[i].assigned()) continue;
+      for (Int::ViewValues<View> val(x[i]); val(); ++val) {
+        int idx = i*width + val.val() - minVal;
+        assert(count[idx] != 0);
         double dens_moy = densities_sum[idx] / (double)count[idx];
         if (dens_moy > best_density_moy) {
           c.idx = i;
-          c.val = j - minVal;
+          c.val = val.val();
           best_density_moy = dens_moy;
         }
       }
