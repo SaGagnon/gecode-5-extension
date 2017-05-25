@@ -160,7 +160,7 @@ public:
   BranchingHeuristic(Space& home, const BranchingHeuristic& bh)
     : positions(bh.positions) {}
   void set_log(Log *_log) {
-    assert(log != NULL);
+    assert(_log != NULL);
     log = _log;
   }
   void set_current_prop(unsigned int prop_id) {
