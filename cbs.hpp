@@ -161,37 +161,112 @@ public:
   }
 };
 
+/**
+ * \brief Base class for collecting densities from propagators
+ *
+ * Before beginning to explain what this class does, we must talk about the
+ * cbs() method in Gecode::Propagator and the CBS class from which we inherit.
+ *
+ * Gecode::Propagator is the base class for every constraint in Gecode.
+ * The algorithm to compute solution densities for a given (variable,value) pair
+ * depends on the constraints in which the variable is involved (its
+ * propagators). For this reason, there's a virtual method in Gecode::Propagator
+ * that any given concrete propagator can overload to tell how it compute
+ * densities for its variables. Here is the signature of the method:
+ *
+ *   Gecode::Propagator::cbs(Space& home, CBS* densities) const;
+ *
+ * As the time of writting this comment, the distinct propagator (see
+ * gecode/int/distinct.hh) and regular propagator (see
+ * gecode/int/extensional.hh) specialise the cbs method to specify its algorithm
+ * to compute solutions densities.
+ *
+ * Of interest to us is the second argument of this method: CBS* densities.
+ * The class CBS is an interface (virtual pure class) that contains only one
+ * method:
+ *
+ * virtual void Gecode::CBS::set(unsigned int var_id, int val, double density) = 0;
+ *
+ * When a propagator overloads its cbs() method, all it knows is he has access
+ * to a object CBS with a set() method that enables him to communicate the
+ * results of its computation (i.e. densities for each of its
+ * (variable,value) pair).
+ *
+ * When braching, CBSBrancher must call the cbs() method on each active
+ * propagator that overloads the method and pass an object that inherits the
+ * class CBS to store densities and compute a choice for branching.
+ *
+ * This class is a specialisation of CBS that we use for caching densities
+ * between computation in a Log and reuse them if possible.
+ */
 template<class View>
 class BranchingHeuristic : public CBS {
 public:
+  // A choice for branching
   struct Candidate {
-    int idx;
-    int val;
+    int idx; // Index of the variable in x
+    int val; // Value in the domain of the variable
   };
 private:
+  // Propagator that is currently using the set() method.
   int current_prop;
 protected:
+  // Array of variables we are using for branching
   ViewArray<View> x;
+  // Hash map that assign an index for each variable in x given its id. It is
+  // useful if we want to store computations in a continuous memory space
   VarIdToPos positions;
+  // The log in which the set method is currently inserting
   Log *log;
 public:
+  /**
+   * Constructor for posting.
+   *
+   * This constructor will be called only once at the beginning of the problem
+   * when we post the brancher.
+   *
+   * @param home Space in which we construct this object
+   * @param x0 Variables concerning the branching heuristic
+   */
   BranchingHeuristic(Space& home, const ViewArray<View>& x0)
     : x(x0) {
+    // The VarIdToPos object is first implicitly constructed with the default
+    // constructor and its shared hashmap is not yet allocated. init() thus
+    // allocate memory for the hashmap
     positions.init();
+    // We can assign an index for each variable id
     for (unsigned int i=0; i<x.size(); i++)
       (*positions.get())[x[i].id()] = i;
   }
+  /**
+   * Constructor for cloning spaces
+   *
+   * @param home New constructed space
+   * @param share Can we share internal data with the new clone
+   * @param bh Object that is being cloned from the parent space
+   */
   BranchingHeuristic(Space& home, bool share, BranchingHeuristic& bh) {
+    // We tell that we have a subscription to x the new constructed space
     x.update(home,share,bh.x);
+    // The hashmap of the VarIdPos object is shared between all spaces. We must
+    // tell here that we want to access the same memory that was allocated in
+    // the default constructor for the hashmap even if we change space. The
+    // only exception is when we use multithreading; the hash map will be copied
+    // and shared amongs the spaces in the new thread
     positions.update(home,share,bh.positions);
   }
+  // Method for specifying the log the set() method uses
   void set_log(Log *_log) {
     assert(_log != NULL);
     log = _log;
   }
+  // Method for specifying the propagator that is currently using the set
+  // method of this class
   void set_current_prop(unsigned int prop_id) {
     current_prop = prop_id;
   }
+  // Method used by all propagators for communicating calculated densities for
+  // each of its (variable,value) pair.
   virtual void set(unsigned int var_id, int val, double density) {
     assert(current_prop != -1);
     Record r; r.var_id=var_id; r.val=val; r.density=density;
