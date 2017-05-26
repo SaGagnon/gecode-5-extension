@@ -201,6 +201,17 @@ public:
  */
 template<class View>
 class BranchingHeuristic : public CBS {
+protected:
+  class Feature {
+    virtual void register_record(const Record& r) = 0;
+    virtual void clear(void) = 0;
+  };
+  class DensitySum : public Feature {
+    int b;
+  virtual void clear() {
+    positions;
+  }
+  };
 public:
   // A choice for branching
   struct Candidate {
