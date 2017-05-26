@@ -156,10 +156,126 @@ public:
     assert(object() == NULL);
     object(new VarIdToPosO());
   }
-  VarIdToPosO::HashMap* get(void) const {
-    return &static_cast<VarIdToPosO*>(object())->hash_map;
+  unsigned int& operator[](unsigned int i) {
+    return static_cast<VarIdToPosO*>(object())->hash_map[i];
+  }
+  unsigned int operator[](unsigned int i) const {
+    return static_cast<VarIdToPosO*>(object())->hash_map[i];
   }
 };
+
+// View array description
+struct VADesc {
+  template<class View>
+  VADesc(const ViewArray<View> x) {
+    // The VarIdToPos object is first implicitly constructed with the default
+    // constructor and its shared hashmap is not yet allocated. init() thus
+    // allocate memory for the hashmap
+    positions.init();
+
+    size = x.size();
+
+    // We can assign an index for each variable id
+    for (unsigned int i=0; i<x.size(); i++)
+      positions[x[i].id()] = i;
+
+    minVal = INT_MAX;
+    int maxVal = INT_MIN;
+    for (unsigned int i=0; i<x.size(); i++) {
+      if (x[i].min() < minVal) minVal = x[i].min();
+      if (x[i].max() > maxVal) maxVal = x[i].max();
+    }
+    assert(minVal != INT_MAX && maxVal != INT_MIN);
+
+    width = maxVal - minVal + 1;
+    assert(width > 1);
+  }
+  VADesc(Space& home, bool share, VADesc& xD)
+    : size(xD.size), minVal(xD.minVal), width(xD.width) {
+    // We tell that we have a subscription to x the new constructed space
+    // The hashmap of the VarIdPos object is shared between all spaces. We must
+    // tell here that we want to access the same memory that was allocated in
+    // the default constructor for the hashmap even if we change space. The
+    // only exception is when we use multithreading; the hash map will be copied
+    // and shared amongs the spaces in the new thread
+    positions.update(home,share,xD.positions);
+  }
+  // Hash map that assign an index for each variable in x given its id. It is
+  // useful if we want to store computations in a continuous memory space
+  VarIdToPos positions;
+  // Number of variables
+  int size;
+  // The minimum value in all the variable in x
+  int minVal;
+  // The width of the union of all variable domains in x
+  int width;
+};
+
+unsigned int varvalpos(const VADesc& xD, unsigned int var_id, int val) {
+  return xD.positions[var_id] * xD.width + val - xD.minVal;
+}
+
+class AbstractFeature {
+public:
+  virtual double get(const VADesc& xD, unsigned int var_id, int val) = 0;
+  virtual void aggregate(const VADesc& xD, unsigned int prop_id,
+                         const Record& r) = 0;
+  virtual void clear(void) = 0;
+};
+
+template<class T>
+class Feature : public AbstractFeature {
+protected:
+  SharedArray<T> arr;
+public:
+  Feature(AbstractFeature** af, int size) {
+    *af = this;
+    arr.init(size);
+    for (int i=0; i<size; i++)
+      arr[i] = 0;
+  }
+  Feature(AbstractFeature** af, Space& home, bool share, Feature& f) {
+    *af = this;
+    arr.update(home,share,f.arr);
+  }
+  void clear(void) {
+    for (int i=0; i<arr.size(); i++)
+      arr[i] = 0;
+  }
+};
+
+class DensitySum : public Feature<double> {
+  using Feature<double>::arr;
+public:
+  DensitySum(AbstractFeature** af, const VADesc& xD)
+    : Feature<double>(af, xD.size * xD.width) {}
+  DensitySum(AbstractFeature** af, Space& home, bool share, DensitySum& ds)
+    : Feature<double>(af,home,share,ds) {}
+  virtual double get(const VADesc& xD, unsigned int var_id, int val) {
+    return arr[varvalpos(xD,var_id,val)];
+  }
+  virtual void aggregate(const VADesc& xD,
+                         unsigned int prop_id, const Record& r) {
+    arr[varvalpos(xD,r.var_id,r.val)] += r.density;
+  }
+};
+
+class VarPropCount : public Feature<int> {
+  using Feature<int>::arr;
+public:
+  VarPropCount(AbstractFeature** af, const VADesc& xD)
+    : Feature<int>(af,xD.size * xD.width) {}
+  VarPropCount(AbstractFeature** af, Space& home, bool share, VarPropCount& vpc)
+    : Feature<int>(af,home,share,vpc) {}
+  virtual double get(const VADesc& xD, unsigned int var_id, int val) {
+    return arr[varvalpos(xD,var_id,val)];
+  }
+  virtual void aggregate(const VADesc& xD, unsigned int prop_id,
+                         const Record& r) {
+    arr[varvalpos(xD,r.var_id,r.val)] += 1;
+  }
+};
+
 
 /**
  * \brief Base class for collecting densities from propagators
@@ -211,11 +327,12 @@ private:
   // Propagator that is currently using the set() method.
   int current_prop;
 protected:
+  AbstractFeature **features;
+  unsigned int n_features;
+
   // Array of variables we are using for branching
   ViewArray<View> x;
-  // Hash map that assign an index for each variable in x given its id. It is
-  // useful if we want to store computations in a continuous memory space
-  VarIdToPos positions;
+  VADesc xD;
   // The log in which the set method is currently inserting
   Log *log;
 public:
@@ -228,15 +345,10 @@ public:
    * @param home Space in which we construct this object
    * @param x0 Variables concerning the branching heuristic
    */
-  BranchingHeuristic(Space& home, const ViewArray<View>& x0)
-    : x(x0) {
-    // The VarIdToPos object is first implicitly constructed with the default
-    // constructor and its shared hashmap is not yet allocated. init() thus
-    // allocate memory for the hashmap
-    positions.init();
-    // We can assign an index for each variable id
-    for (unsigned int i=0; i<x.size(); i++)
-      (*positions.get())[x[i].id()] = i;
+  BranchingHeuristic(Space& home, const ViewArray<View>& x0,
+                     unsigned int n_features0)
+    : x(x0), xD(x0), n_features(n_features0) {
+    features = home.alloc<AbstractFeature*>(n_features);
   }
   /**
    * Constructor for cloning spaces
@@ -245,15 +357,10 @@ public:
    * @param share Can we share internal data with the new clone
    * @param bh Object that is being cloned from the parent space
    */
-  BranchingHeuristic(Space& home, bool share, BranchingHeuristic& bh) {
-    // We tell that we have a subscription to x the new constructed space
+  BranchingHeuristic(Space& home, bool share, BranchingHeuristic& bh)
+    : xD(home,share,bh.xD), n_features(bh.n_features) {
+    features = home.alloc<AbstractFeature*>(n_features);
     x.update(home,share,bh.x);
-    // The hashmap of the VarIdPos object is shared between all spaces. We must
-    // tell here that we want to access the same memory that was allocated in
-    // the default constructor for the hashmap even if we change space. The
-    // only exception is when we use multithreading; the hash map will be copied
-    // and shared amongs the spaces in the new thread
-    positions.update(home,share,bh.positions);
   }
   // Method for specifying the log the set() method uses
   void set_log(Log *_log) {
@@ -275,55 +382,11 @@ public:
     (*log)[current_prop].second[(*nb_record)++] = r;
   }
 
-  virtual Candidate get(Space& home) = 0;
-};
-
-template<class View>
-class aAvgSD : public BranchingHeuristic<View> {
-  typedef typename BranchingHeuristic<View>::Candidate Candidate;
-  using BranchingHeuristic<View>::x;
-  using BranchingHeuristic<View>::positions;
-  using BranchingHeuristic<View>::log;
-private:
-  int minVal;
-  int width;
-  SharedArray<double> densities_sum;
-  SharedArray<int> count;
-public:
-  aAvgSD(Space& home, const ViewArray<View>& x)
-    : BranchingHeuristic<View>(home,x) {
-    minVal = INT_MAX;
-    int maxVal = INT_MIN;
-    for (unsigned int i=0; i<x.size(); i++) {
-      if (x[i].min() < minVal) minVal = x[i].min();
-      if (x[i].max() > maxVal) maxVal = x[i].max();
-    }
-    assert(minVal != INT_MAX && maxVal != INT_MIN);
-
-    width = maxVal - minVal + 1;
-    assert(width > 1);
-
-    int size = x.size() * width;
-
-    densities_sum.init(size);
-    count.init(size);
-    for (int i=0; i<size; i++) {
-      densities_sum[i] = 0;
-      count[i] = 0;
-    }
-  }
-  aAvgSD(Space& home, bool share, aAvgSD& a)
-    : BranchingHeuristic<View>(home,share,a), minVal(a.minVal), width(a.width) {
-    densities_sum.update(home,share,a.densities_sum);
-    count.update(home,share,a.count);
-  }
-  virtual Candidate get(Space& home) {
-    // densities_sum and count are shared between all the spaces. This way, we
-    // don't need to allocate memory each time we want to calculate a new
-    // choice. This also mean that we have to reset everything to 0
-    for (int i=0; i<(*positions.get()).size()*width; i++) {
-      densities_sum[i] = 0;
-      count[i] = 0;
+  virtual Candidate getChoice(Space& home) {
+    // Some memory area for computing features may be shared between all
+    // the spaces. We ask the clear thosees areas before computing.
+    for (int f=0; f<n_features; f++) {
+      features[f]->clear();
     }
 
     // isVarSub is true if it is inside at least one propagator that supports
@@ -339,15 +402,15 @@ public:
       // (variable,value) pair and their corresponding density)
       for (unsigned int i=0; i<nb_records; ++i) {
         Record r = it->second.second[i];
-        unsigned int pos = (*positions.get())[r.var_id] * width + r.val - minVal;
-        densities_sum[pos] += r.density;
-        count[pos] += 1;
+        for (int f=0; f<n_features; f++) {
+          features[f]->aggregate(xD,prop_id,r);
+        }
       }
     }
 
     Candidate c;
     c.idx = -1;
-    double best_density_moy = 0;
+    double best_score = 0;
 
     for (int i=0; i<x.size(); i++) {
 
@@ -362,20 +425,41 @@ public:
 
       if (x[i].assigned()) continue;
       for (Int::ViewValues<View> val(x[i]); val(); ++val) {
-        int idx = i*width + val.val() - minVal;
-//        if (count[idx]==0) {
-//          printf("COUNT=0. prop_id=%i\n",);
-//        }
-        assert(count[idx] != 0);
-        double dens_moy = densities_sum[idx] / (double)count[idx];
-        if (dens_moy > best_density_moy) {
+        double score = getScore(xD,x[i].id(),val.val());
+        if (score > best_score) {
           c.idx = i;
           c.val = val.val();
-          best_density_moy = dens_moy;
+          best_score = score;
         }
       }
     }
     return c;
+  }
+
+protected:
+  virtual double getScore(const VADesc& xD, unsigned int var_id,
+                          int val) = 0;
+};
+
+template<class View>
+class aAvgSD : public BranchingHeuristic<View> {
+  using BranchingHeuristic<View>::features;
+  using BranchingHeuristic<View>::xD;
+private:
+  DensitySum densities_sum;
+  VarPropCount count;
+public:
+  aAvgSD(Space& home, const ViewArray<View>& x)
+    : BranchingHeuristic<View>(home,x,2),
+      densities_sum(&features[0],xD),
+      count(&features[1],xD) {}
+  aAvgSD(Space& home, bool share, aAvgSD& a)
+    : BranchingHeuristic<View>(home,share,a),
+      densities_sum(&features[0],home,share,a.densities_sum),
+      count(&features[1],home,share,a.count) {}
+protected:
+  virtual double getScore(const VADesc& xD, unsigned int var_id, int val) {
+    return densities_sum.get(xD,var_id,val) / count.get(xD,var_id,val);
   }
 };
 
@@ -508,7 +592,7 @@ public:
     changedProps.clear();
 
     // We find the choice.
-    Candidate c = heur.get(home);
+    Candidate c = heur.getChoice(home);
     static int count=0;
     assert(!x[c.idx].assigned());
     assert(x[c.idx].in(c.val));
