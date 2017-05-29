@@ -5,6 +5,7 @@
 #include <ext/hash_map>
 #include <ext/hash_set>
 #include <cstring>
+#include <tuple>
 
 using namespace Gecode;
 
@@ -223,13 +224,16 @@ public:
   virtual void clear(void) = 0;
 };
 
-template<class T>
+template<class T,
+  void (*A)(SharedArray<T>&, const VADesc&, unsigned int, const Record&)>
 class Feature : public AbstractFeature {
 protected:
   SharedArray<T> arr;
 public:
-  Feature(AbstractFeature** af, int size) {
+
+  Feature(AbstractFeature** af, VADesc& xD) {
     *af = this;
+    int size = xD.size * xD.width;
     arr.init(size);
     for (int i=0; i<size; i++)
       arr[i] = 0;
@@ -238,43 +242,39 @@ public:
     *af = this;
     arr.update(home,share,f.arr);
   }
+  virtual double get(const VADesc& xD, unsigned int var_id, int val) {
+    return arr[varvalpos(xD,var_id,val)];
+  }
+  virtual void aggregate(const VADesc& xD, unsigned int prop_id,
+                         const Record& r) {
+    A(arr,xD,prop_id,r);
+  }
   void clear(void) {
     for (int i=0; i<arr.size(); i++)
       arr[i] = 0;
   }
 };
 
-class DensitySum : public Feature<double> {
-  using Feature<double>::arr;
-public:
-  DensitySum(AbstractFeature** af, const VADesc& xD)
-    : Feature<double>(af, xD.size * xD.width) {}
-  DensitySum(AbstractFeature** af, Space& home, bool share, DensitySum& ds)
-    : Feature<double>(af,home,share,ds) {}
-  virtual double get(const VADesc& xD, unsigned int var_id, int val) {
-    return arr[varvalpos(xD,var_id,val)];
-  }
-  virtual void aggregate(const VADesc& xD,
-                         unsigned int prop_id, const Record& r) {
-    arr[varvalpos(xD,r.var_id,r.val)] += r.density;
-  }
-};
+void f_MaxDensity(SharedArray<double>& arr, const VADesc& xD,
+                  unsigned int prop_id, const Record& r) {
+  double *dens = &arr[varvalpos(xD,r.var_id,r.val)];
+  if (*dens < r.density)
+    *dens = r.density;
+}
+typedef Feature<double, f_MaxDensity> MaxDensity;
 
-class VarPropCount : public Feature<int> {
-  using Feature<int>::arr;
-public:
-  VarPropCount(AbstractFeature** af, const VADesc& xD)
-    : Feature<int>(af,xD.size * xD.width) {}
-  VarPropCount(AbstractFeature** af, Space& home, bool share, VarPropCount& vpc)
-    : Feature<int>(af,home,share,vpc) {}
-  virtual double get(const VADesc& xD, unsigned int var_id, int val) {
-    return arr[varvalpos(xD,var_id,val)];
-  }
-  virtual void aggregate(const VADesc& xD, unsigned int prop_id,
-                         const Record& r) {
-    arr[varvalpos(xD,r.var_id,r.val)] += 1;
-  }
-};
+void f_DensitySum(SharedArray<double>& arr, const VADesc& xD,
+                  unsigned int prop_id, const Record& r) {
+    arr[varvalpos(xD,r.var_id,r.val)] += r.density;
+}
+typedef Feature<double, f_DensitySum> DensitySum;
+
+void f_VarPropCount(SharedArray<int>& arr, const VADesc& xD,
+                  unsigned int prop_id, const Record& r) {
+  arr[varvalpos(xD,r.var_id,r.val)] += 1;
+}
+typedef Feature<int, f_VarPropCount> VarPropCount;
+
 
 
 /**
@@ -441,34 +441,69 @@ protected:
                           int val) = 0;
 };
 
-template<class View>
-class aAvgSD : public BranchingHeuristic<View> {
+template<class View, class F1,
+  double (*G)(F1&, const VADesc&, unsigned int, int)>
+class OneFeature : public BranchingHeuristic<View> {
   using BranchingHeuristic<View>::features;
   using BranchingHeuristic<View>::xD;
 private:
-  DensitySum densities_sum;
-  VarPropCount count;
+  F1 f1;
 public:
-  aAvgSD(Space& home, const ViewArray<View>& x)
-    : BranchingHeuristic<View>(home,x,2),
-      densities_sum(&features[0],xD),
-      count(&features[1],xD) {}
-  aAvgSD(Space& home, bool share, aAvgSD& a)
-    : BranchingHeuristic<View>(home,share,a),
-      densities_sum(&features[0],home,share,a.densities_sum),
-      count(&features[1],home,share,a.count) {}
+  OneFeature(Space& home, const ViewArray<View>& x)
+  : BranchingHeuristic<View>(home,x,1),
+    f1(&features[0], xD) {}
+  OneFeature(Space& home, bool share, OneFeature& bh)
+  : BranchingHeuristic<View>(home,share,bh),
+    f1(&features[0],home,share,bh.f1) {}
 protected:
   virtual double getScore(const VADesc& xD, unsigned int var_id, int val) {
-    return densities_sum.get(xD,var_id,val) / count.get(xD,var_id,val);
+    return G(f1,xD,var_id,val);
   }
 };
 
+template<class View, class F1, class F2,
+  double (*G)(F1&, F2&, const VADesc&, unsigned int, int)>
+class TwoFeature : public BranchingHeuristic<View> {
+  using BranchingHeuristic<View>::features;
+  using BranchingHeuristic<View>::xD;
+private:
+  F1 f1;
+  F2 f2;
+public:
+  TwoFeature(Space& home, const ViewArray<View>& x)
+    : BranchingHeuristic<View>(home,x,2),
+      f1(&features[0], xD),
+      f2(&features[1], xD) {}
+  TwoFeature(Space& home, bool share, TwoFeature& bh)
+    : BranchingHeuristic<View>(home,share,bh),
+      f1(&features[0],home,share,bh.f1),
+      f2(&features[1],home,share,bh.f2) {}
+protected:
+  virtual double getScore(const VADesc& xD, unsigned int var_id, int val) {
+    return G(f1,f2, xD,var_id,val);
+  }
+};
+
+double f_maxSD(MaxDensity& f1, const VADesc& xD, unsigned int var_id, int val) {
+  return f1.get(xD,var_id,val);
+}
 template<class View>
+using maxSD = OneFeature<View, MaxDensity, f_maxSD>;
+
+double f_aAvgSD(DensitySum& f1, VarPropCount& f2, const VADesc& xD,
+                unsigned int var_id, int val) {
+  return f1.get(xD,var_id,val) / f2.get(xD,var_id,val);
+}
+template<class View>
+using aAvgSD = TwoFeature<View, DensitySum, VarPropCount, f_aAvgSD>;
+
+
+template<class View, class Strategy>
 class CBSBrancher : public Brancher {
   typedef typename BranchingHeuristic<View>::Candidate Candidate;
 protected:
   ViewArray<View> x;
-  aAvgSD<View> heur;
+  Strategy heur;
   ChangedPropagators changedProps;
   Log log;
 public:
@@ -487,7 +522,7 @@ public:
     home.ignore(*this, AP_DISPOSE);
     // ~aAvgSD() calls ~SharedHashMap() which calls ~SharedHashMapObject() to
     // deallocate the hash map when the refcount of SharedHashMapObject is 0
-    heur.~aAvgSD();
+    heur.~Strategy();
     (void) Brancher::dispose(home);
     return sizeof(*this);
   }
@@ -629,20 +664,36 @@ enum CBSStrategy {
  A_AVG_SD
 };
 
-void cbsbranch(Home home, const IntVarArgs& x) {
+void cbsbranch(Home home, const IntVarArgs& x, CBSStrategy s) {
   if (home.failed()) return;
   ViewArray<Int::IntView> y(home,x);
   ChangedPropagators spc(home);
   ViewUpdateLooker<Int::IntView>::post(home,y,spc);
-  CBSBrancher<Int::IntView>::post(home,y,spc);
+
+  switch(s) {
+    case MAX_SD:
+      CBSBrancher<Int::IntView,maxSD<Int::IntView> >::post(home,y,spc);
+      break;
+    case A_AVG_SD:
+      CBSBrancher<Int::IntView,aAvgSD<Int::IntView> >::post(home,y,spc);
+      break;
+  }
 }
 
-void cbsbranch(Home home, const BoolVarArgs& x) {
+void cbsbranch(Home home, const BoolVarArgs& x, CBSStrategy s) {
   if (home.failed()) return;
   ViewArray<Int::BoolView> y(home,x);
   ChangedPropagators spc(home);
   ViewUpdateLooker<Int::BoolView>::post(home,y,spc);
-  CBSBrancher<Int::BoolView>::post(home,y,spc);
+
+  switch(s) {
+    case MAX_SD:
+      CBSBrancher<Int::BoolView,maxSD<Int::BoolView> >::post(home,y,spc);
+      break;
+    case A_AVG_SD:
+      CBSBrancher<Int::BoolView,aAvgSD<Int::BoolView> >::post(home,y,spc);
+      break;
+  }
 }
 
 #endif //__CBS_HPP__
