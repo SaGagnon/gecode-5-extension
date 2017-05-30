@@ -134,7 +134,12 @@ public:
 struct Record { unsigned int var_id; int val; double density; };
 typedef __gnu_cxx::hash_map< unsigned int, std::pair<size_t,Record*>,
   __gnu_cxx::hash<unsigned int>, __gnu_cxx::equal_to<unsigned int>,
-  Gecode::space_allocator<unsigned int> > Log;
+  Gecode::space_allocator<std::pair<size_t,Record*>> > LogDensity;
+
+typedef __gnu_cxx::hash_map< unsigned int, double,
+  __gnu_cxx::hash<unsigned int>, __gnu_cxx::equal_to<unsigned int>,
+  Gecode::space_allocator<double> > LogSlnCnt;
+
 
 class VarIdToPos : public SharedHandle {
 protected:
@@ -224,7 +229,7 @@ class AbstractFeature {
 public:
   virtual AbstractFeature* copy(Space& home, bool share) = 0;
   virtual double get(const VADesc& xD, unsigned int var_id, int val) = 0;
-  virtual void aggregate(const VADesc& xD, unsigned int prop_id,
+  virtual void aggregate(const VADesc& xD, unsigned int prop_id, double slnCnt,
                          const Record& r) = 0;
   virtual void clear(void) = 0;
 };
@@ -278,7 +283,7 @@ public:
 
 
 CLASS_FEATURE(MaxDensity, double)
-  virtual void aggregate(const VADesc& xD, unsigned int prop_id,
+  virtual void aggregate(const VADesc& xD, unsigned int prop_id, double slnCnt,
                          const Record& r) {
     double *dens = &arr[varvalpos(xD, r.var_id, r.val)];
     if (*dens < r.density)
@@ -287,14 +292,14 @@ CLASS_FEATURE(MaxDensity, double)
 };
 
 CLASS_FEATURE(DensitySum, double)
-  virtual void aggregate(const VADesc& xD, unsigned int prop_id,
+  virtual void aggregate(const VADesc& xD, unsigned int prop_id, double slnCnt,
                          const Record& r) {
     arr[varvalpos(xD, r.var_id, r.val)] += r.density;
   }
 };
 
 CLASS_FEATURE(VarPropCount, double)
-  virtual void aggregate(const VADesc& xD, unsigned int prop_id,
+  virtual void aggregate(const VADesc& xD, unsigned int prop_id, double slnCnt,
                          const Record& r) {
     arr[varvalpos(xD, r.var_id, r.val)] += 1;
   }
@@ -358,7 +363,8 @@ protected:
   ViewArray<View> x;
   VADesc xD;
   // The log in which the set method is currently inserting
-  Log *log;
+  LogDensity *logDensity;
+  LogSlnCnt *logSlnCnt;
 public:
   /**
    * Constructor for posting.
@@ -388,10 +394,14 @@ public:
       features[i] = bh.features[i]->copy(home,share);
     x.update(home,share,bh.x);
   }
-  // Method for specifying the log the set() method uses
-  void set_log(Log *_log) {
-    assert(_log != NULL);
-    log = _log;
+  // Method for specifying the logDensity the set() method uses
+  void set_log_density(LogDensity *_logDensity) {
+    assert(_logDensity != NULL);
+    logDensity = _logDensity;
+  }
+  void set_log_sln_cnt(LogSlnCnt *_logSlnCnt) {
+    assert(_logSlnCnt != NULL);
+    logSlnCnt = _logSlnCnt;
   }
   // Method for specifying the propagator that is currently using the set
   // method of this class
@@ -404,8 +414,12 @@ public:
     assert(current_prop != -1);
     Record r; r.var_id=var_id; r.val=val; r.density=density;
     // Number of records for the current propagator
-    size_t *nb_record = &(*log)[current_prop].first;
-    (*log)[current_prop].second[(*nb_record)++] = r;
+    size_t *nb_record = &(*logDensity)[current_prop].first;
+    (*logDensity)[current_prop].second[(*nb_record)++] = r;
+  }
+  virtual void setSlnCnt(double slnCnt) {
+    assert(current_prop != -1);
+    (*logSlnCnt)[current_prop] = slnCnt;
   }
 
   virtual Candidate getChoice(Space& home) {
@@ -421,7 +435,7 @@ public:
     __gnu_cxx::hash_set<unsigned int> isVarSub;
 
     // For every propagator in the log
-    for (Log::iterator it=log->begin(); it!=log->end(); ++it) {
+    for (LogDensity::iterator it=logDensity->begin(); it!=logDensity->end(); ++it) {
       unsigned int prop_id = it->first;
       size_t nb_records = it->second.first;
       // Aggregation for every record concerning the propagator (i.e. every
@@ -429,7 +443,7 @@ public:
       for (unsigned int i=0; i<nb_records; ++i) {
         Record r = it->second.second[i];
         for (int f=0; f<n_features; f++) {
-          features[f]->aggregate(xD,prop_id,r);
+          features[f]->aggregate(xD,prop_id,(*logSlnCnt)[prop_id],r);
         }
       }
     }
@@ -518,7 +532,21 @@ public:
     assign<MaxDensity>(0,home,features,xD);
   }
   virtual double getScore(const VADesc& xD, unsigned int var_id, int val)  {
-    return features[0]->get(xD,var_id,val) / x[varpos(xD,var_id)].size();
+    return features[0]->get(xD,var_id,val) - 1.0/x[varpos(xD,var_id)].size();
+  }
+};
+
+
+template<class View>
+class maxRelRatio : public BranchingHeuristic<View> {
+  USING_BRANCHING_HEUR
+public:
+  maxRelRatio(Space& home, const ViewArray<View>& x)
+    : BranchingHeuristic<View>(home,x,1) {
+    assign<MaxDensity>(0,home,features,xD);
+  }
+  virtual double getScore(const VADesc& xD, unsigned int var_id, int val)  {
+    return features[0]->get(xD,var_id,val) * x[varpos(xD,var_id)].size();
   }
 };
 
@@ -531,12 +559,16 @@ protected:
   ViewArray<View> x;
   BranchingHeur<View> heur;
   ChangedPropagators changedProps;
-  Log log;
+  LogDensity logDensity;
+  LogSlnCnt logSlnCnt;
 public:
   CBSBrancher(Home home, ViewArray<View>& x0, const ChangedPropagators& spc)
     : Brancher(home), x(x0), heur(home,x0), changedProps(spc),
-      log(Log::size_type(), Log::hasher(), Log::key_equal(),
-          Log::allocator_type(home)) {
+      logDensity(LogDensity::size_type(), LogDensity::hasher(),
+                 LogDensity::key_equal(), LogDensity::allocator_type(home)),
+      logSlnCnt(LogSlnCnt::size_type(), LogSlnCnt::hasher(),
+                LogSlnCnt::key_equal(), LogSlnCnt::allocator_type(home))
+  {
     // Because we must call the destructor of aAvgSD
     home.notice(*this,AP_DISPOSE);
   }
@@ -554,16 +586,20 @@ public:
   }
   CBSBrancher(Space& home, bool share, CBSBrancher& b)
     : Brancher(home,share,b), heur(home,share,b.heur),
-      log(b.log.begin(), b.log.end(), Log::size_type(), Log::hasher(),
-          Log::key_equal(), Log::allocator_type(home)) {
+      logDensity(b.logDensity.begin(), b.logDensity.end(),
+                 LogDensity::size_type(), LogDensity::hasher(),
+                 LogDensity::key_equal(), LogDensity::allocator_type(home)),
+      logSlnCnt(b.logSlnCnt.begin(), b.logSlnCnt.end(),
+                 LogSlnCnt::size_type(), LogSlnCnt::hasher(),
+                 LogSlnCnt::key_equal(), LogSlnCnt::allocator_type(home)) {
     x.update(home,share,b.x);
     changedProps.update(home,share,b.changedProps);
 
-    for (Log::iterator it=log.begin(); it!=log.end(); ++it) {
+    for (LogDensity::iterator it=logDensity.begin(); it!=logDensity.end(); ++it) {
       unsigned int prop_id = it->first;
-      size_t count = b.log[prop_id].first;
+      size_t count = b.logDensity[prop_id].first;
       it->second.second = home.alloc<Record>(count);
-      memcpy(it->second.second, b.log[prop_id].second, count*sizeof(Record));
+      memcpy(it->second.second, b.logDensity[prop_id].second, count*sizeof(Record));
     }
   }
   virtual Brancher* copy(Space& home, bool share) {
@@ -606,7 +642,7 @@ public:
       std::vector<unsigned int> propsToDelete;
 
       // Propagators to delete (not active and in log)
-      for (Log::iterator it = log.begin(); it != log.end(); ++it)
+      for (LogDensity::iterator it = logDensity.begin(); it != logDensity.end(); ++it)
         if (activeProps.find(it->first) == activeProps.end())
           propsToDelete.push_back(it->first);
 
@@ -616,34 +652,37 @@ public:
         unsigned int prop_id = *it;
         // TODO: Trouver une manière de free comme il le faut (avec vrai grandeur, pas nb element en ce moment)...
 //        home.free(log[prop_id].second, log[prop_id].first);
-        log.erase(prop_id);
+        logDensity.erase(prop_id);
+        logSlnCnt.erase(prop_id);
       }
     }
 
     // We specify the log that will be modified when the propagators use the
     // CBS::set()
-    heur.set_log(&log);
+    heur.set_log_density(&logDensity);
+    heur.set_log_sln_cnt(&logSlnCnt);
     for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
       if (!p.propagator().cbs(home,NULL)) continue;
       unsigned int prop_id = p.propagator().id();
       // Activity in propagator since last branching
       bool changed = changedProps.contains(prop_id);
       // Propagator already in the log?
-      bool in_log = log.find(prop_id) != log.end();
+      bool in_log = logDensity.find(prop_id) != logDensity.end();
 
       if (in_log) {
-        if (changed)
+        if (changed) {
           // We discard the previous entries by setting the count to 0 (we
           // thus reuse previous allocated memory. The number of records can't
           // grow).
-          log[prop_id].first = 0;
-        else
+          logDensity[prop_id].first = 0;
+        } else {
           // We continue, meaning we will use the previous entries
           continue;
+        }
       } else {
         // Otherwise, we need to allocate space for the records of the
         // new propagator
-        log[prop_id] =
+        logDensity[prop_id] =
           std::make_pair(0, home.alloc<Record>(activeProps[prop_id]));
       }
       heur.set_current_prop(prop_id);
@@ -707,6 +746,9 @@ void _cbsbranch(Home home, const T& x, CBSStrategy s) {
       break;
     case MAX_REL_SD:
       CBSBrancher<View,maxRelSD>::post(home,y,spc);
+      break;
+    case MAX_REL_RATIO:
+      CBSBrancher<View,maxRelRatio>::post(home,y,spc);
       break;
     case A_AVG_SD:
       CBSBrancher<View,aAvgSD>::post(home,y,spc);
