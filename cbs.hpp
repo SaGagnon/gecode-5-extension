@@ -470,7 +470,6 @@ public:
         }
       }
     }
-    printf("Best choice:%f\n",best_score);
     return c;
   }
 
@@ -532,14 +531,6 @@ double f_maxSD(ViewArray<View>& x, MaxDensity& f1, const VADesc& xD,
 template<class View>
 using maxSD = OneFeature<View, MaxDensity, f_maxSD>;
 
-template<class View>
-double f_aAvgSD(ViewArray<View>& x, DensitySum& f1, VarPropCount& f2,
-                const VADesc& xD, unsigned int var_id, int val) {
-  return f1.get(xD,var_id,val) / f2.get(xD,var_id,val);
-}
-template<class View>
-using aAvgSD = TwoFeature<View, DensitySum, VarPropCount, f_aAvgSD>;
-
 
 template<class View>
 double f_maxRelSD(ViewArray<View>& x, MaxDensity& f1, const VADesc& xD,
@@ -548,6 +539,26 @@ double f_maxRelSD(ViewArray<View>& x, MaxDensity& f1, const VADesc& xD,
 }
 template<class View>
 using maxRelSD = OneFeature<View, MaxDensity, f_maxRelSD>;
+
+
+template<class View>
+double f_maxRelRatio(ViewArray<View>& x, MaxDensity& f1, const VADesc& xD,
+                  unsigned int var_id, int val) {
+  return f1.get(xD,var_id,val) / (1.0/(double)x[varpos(xD,var_id)].size());
+}
+template<class View>
+using maxRelRatio = OneFeature<View, MaxDensity, f_maxRelRatio>;
+
+template<class View>
+double f_aAvgSD(ViewArray<View>& x, DensitySum& f1, VarPropCount& f2,
+                const VADesc& xD, unsigned int var_id, int val) {
+  return f1.get(xD,var_id,val) / f2.get(xD,var_id,val);
+}
+template<class View>
+using aAvgSD = TwoFeature<View, DensitySum, VarPropCount, f_aAvgSD>;
+
+template<class View>
+double f_wSCAvg
 
 
 template<class View, class Strategy>
@@ -714,6 +725,7 @@ public:
 enum CBSStrategy {
   MAX_SD,
   MAX_REL_SD,
+  MAX_REL_RATIO,
   A_AVG_SD
 };
 
@@ -729,6 +741,9 @@ void cbsbranch(Home home, const IntVarArgs& x, CBSStrategy s) {
       break;
     case MAX_REL_SD:
       CBSBrancher<Int::IntView,maxRelSD<Int::IntView> >::post(home,y,spc);
+      break;
+    case MAX_REL_RATIO:
+      CBSBrancher<Int::IntView,maxRelRatio<Int::IntView> >::post(home,y,spc);
       break;
     case A_AVG_SD:
       CBSBrancher<Int::IntView,aAvgSD<Int::IntView> >::post(home,y,spc);
@@ -748,6 +763,9 @@ void cbsbranch(Home home, const BoolVarArgs& x, CBSStrategy s) {
       break;
     case MAX_REL_SD:
       CBSBrancher<Int::BoolView,maxRelSD<Int::BoolView> >::post(home,y,spc);
+      break;
+    case MAX_REL_RATIO:
+      CBSBrancher<Int::BoolView,maxRelRatio<Int::BoolView> >::post(home,y,spc);
       break;
     case A_AVG_SD:
       CBSBrancher<Int::BoolView,aAvgSD<Int::BoolView> >::post(home,y,spc);
