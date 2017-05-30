@@ -67,7 +67,7 @@ public:
       }
     }
 
-    cbsbranch(*this, x, CBSStrategy::MAX_REL_RATIO);
+    cbsbranch(*this, x, CBSStrategy::MAX_SD);
     // In case there's no more propagators with include instrumentation
     branch(*this, x, INT_VAR_SIZE_MIN(), INT_VAL_SPLIT_MIN());
   }
