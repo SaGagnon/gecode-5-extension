@@ -305,6 +305,19 @@ CLASS_FEATURE(VarPropCount, double)
   }
 };
 
+CLASS_FEATURE(SlnCntProdDens, double)
+  virtual void aggregate(const VADesc& xD, unsigned int prop_id, double slnCnt,
+                         const Record& r) {
+    arr[varvalpos(xD, r.var_id, r.val)] += slnCnt * r.density;
+  }
+};
+
+CLASS_FEATURE(SlnCntSum, double)
+  virtual void aggregate(const VADesc& xD, unsigned int prop_id, double slnCnt,
+                         const Record& r) {
+    arr[varvalpos(xD, r.var_id, r.val)] += slnCnt;
+  }
+};
 
 /**
  * \brief Base class for collecting densities from propagators
@@ -551,6 +564,21 @@ public:
 };
 
 
+template<class View>
+class wcSCAvg : public BranchingHeuristic<View> {
+  USING_BRANCHING_HEUR
+public:
+  wcSCAvg(Space& home, const ViewArray<View>& x)
+    : BranchingHeuristic<View>(home,x,2) {
+    assign<SlnCntProdDens>(0,home,features,xD);
+    assign<SlnCntSum>(1,home,features,xD);
+  }
+  virtual double getScore(const VADesc& xD, unsigned int var_id, int val)  {
+    return features[0]->get(xD,var_id,val) / features[1]->get(xD,var_id,val);
+  }
+};
+
+
 
 template<class View, template<class> class BranchingHeur>
 class CBSBrancher : public Brancher {
@@ -729,7 +757,8 @@ enum CBSStrategy {
   MAX_SD,
   MAX_REL_SD,
   MAX_REL_RATIO,
-  A_AVG_SD
+  A_AVG_SD,
+  W_SC_AVG
 };
 
 
@@ -753,6 +782,11 @@ void _cbsbranch(Home home, const T& x, CBSStrategy s) {
     case A_AVG_SD:
       CBSBrancher<View,aAvgSD>::post(home,y,spc);
       break;
+    case W_SC_AVG:
+      CBSBrancher<View,wcSCAvg>::post(home,y,spc);
+      break;
+    default:
+      GECODE_NEVER;
   }
 }
 
