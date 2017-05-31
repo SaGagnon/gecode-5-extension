@@ -753,7 +753,7 @@ public:
   }
 };
 
-enum CBSStrategy {
+enum CBSBranchingHeuristic {
   MAX_SD,
   MAX_REL_SD,
   MAX_REL_RATIO,
@@ -763,7 +763,7 @@ enum CBSStrategy {
 
 
 template<class View, class T>
-void _cbsbranch(Home home, const T& x, CBSStrategy s) {
+void _cbsbranch(Home home, const T& x, CBSBranchingHeuristic s) {
   if (home.failed()) return;
   ViewArray<View> y(home,x);
   ChangedPropagators spc(home);
@@ -791,11 +791,11 @@ void _cbsbranch(Home home, const T& x, CBSStrategy s) {
 }
 
 
-void cbsbranch(Home home, const IntVarArgs& x, CBSStrategy s) {
+void cbsbranch(Home home, const IntVarArgs& x, CBSBranchingHeuristic s) {
   _cbsbranch<Int::IntView,IntVarArgs>(home,x,s);
 }
 
-void cbsbranch(Home home, const BoolVarArgs& x, CBSStrategy s) {
+void cbsbranch(Home home, const BoolVarArgs& x, CBSBranchingHeuristic s) {
   _cbsbranch<Int::BoolView,BoolVarArgs>(home,x,s);
 }
 

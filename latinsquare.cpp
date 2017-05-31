@@ -45,6 +45,19 @@ protected:
   /// Values for the fields
   IntVarArray x;
 public:
+  enum {
+    BRANCH_NONE, ///< Branch on rows/columns in order
+    BRANCH_AFC,  ///< Use AFC for branching
+    BRANCH_SIZE_AFC,
+    BRANCH_SIZE,
+    BRANCH_SIZE_ACTIVITY,
+    BRANCH_SIZE_DEGREE,
+    BRANCH_CBS_MAX_SD,
+    BRANCH_CBS_MAX_REL_SD,
+    BRANCH_CBS_MAX_REL_RATIO,
+    BRANCH_CBS_A_AVG_SD,
+    BRANCH_CBS_W_SC_AVG
+  };
   /// Constructor
   LatinSquare(const SizeOptions& opt)
     : Script(opt), x(*this, n*n, 0, n-1) {
@@ -67,10 +80,38 @@ public:
       }
     }
 
-    cbsbranch(*this, x, CBSStrategy::A_AVG_SD);
-    // In case there's no more propagators with include instrumentation
-    //TODO: Mettre quelque chose de plus "defaut"
-    branch(*this, x, INT_VAR_SIZE_MIN(), INT_VAL_SPLIT_MIN());
+
+    if (opt.branching() == BRANCH_NONE) {
+      branch(*this, x, INT_VAR_NONE(), INT_VAL_SPLIT_MIN());
+    } else if (opt.branching() == BRANCH_SIZE) {
+      branch(*this, x, INT_VAR_SIZE_MIN(), INT_VAL_SPLIT_MIN());
+    } else if (opt.branching() == BRANCH_SIZE_DEGREE) {
+      branch(*this, x, INT_VAR_DEGREE_SIZE_MAX(), INT_VAL_SPLIT_MIN());
+    } else if (opt.branching() == BRANCH_SIZE_AFC) {
+      branch(*this, x, INT_VAR_AFC_SIZE_MAX(opt.decay()), INT_VAL_SPLIT_MIN());
+    } else if (opt.branching() == BRANCH_AFC) {
+      branch(*this, x, INT_VAR_AFC_MAX(opt.decay()), INT_VAL_SPLIT_MIN());
+    } else if (opt.branching() == BRANCH_SIZE_ACTIVITY) {
+      branch(*this, x, INT_VAR_ACTIVITY_SIZE_MAX(opt.decay()), INT_VAL_MIN());
+    } else {
+      if (opt.branching() == BRANCH_CBS_MAX_SD) {
+        cbsbranch(*this, x, CBSBranchingHeuristic::MAX_SD);
+      } else if (opt.branching() == BRANCH_CBS_MAX_REL_SD) {
+        cbsbranch(*this, x, CBSBranchingHeuristic::MAX_REL_SD);
+      } else if (opt.branching() == BRANCH_CBS_MAX_REL_RATIO) {
+        cbsbranch(*this, x, CBSBranchingHeuristic::MAX_REL_RATIO);
+      } else if (opt.branching() == BRANCH_CBS_A_AVG_SD) {
+        cbsbranch(*this, x, CBSBranchingHeuristic::A_AVG_SD);
+      } else if (opt.branching() == BRANCH_CBS_W_SC_AVG) {
+        cbsbranch(*this, x, CBSBranchingHeuristic::W_SC_AVG);
+      }
+      // In case there's no more propagators with include instrumentation
+      //TODO: Mettre quelque chose de plus "defaut"
+      branch(*this, x, INT_VAR_SIZE_MIN(), INT_VAL_SPLIT_MIN());
+    }
+
+
+
   }
 
   /// Constructor for cloning \a s
@@ -108,10 +149,28 @@ main(int argc, char* argv[]) {
   opt.ipl(IPL_DOM);
   opt.solutions(1);
 //  opt.mode(SM_GIST);
+
+
+  opt.branching(LatinSquare::BRANCH_CBS_MAX_SD);
+  opt.branching(LatinSquare::BRANCH_NONE, "none", "Branch on rows/columns in order");
+  opt.branching(LatinSquare::BRANCH_SIZE, "size", "min size");
+  opt.branching(LatinSquare::BRANCH_SIZE_DEGREE, "sizedeg", "min size over degree");
+  opt.branching(LatinSquare::BRANCH_AFC, "afc", "Use AFC for branching");
+  opt.branching(LatinSquare::BRANCH_SIZE_AFC, "sizeafc", "min size over afc");
+  opt.branching(LatinSquare::BRANCH_SIZE_ACTIVITY, "sizeact", "max size over activity");
+  opt.branching(LatinSquare::BRANCH_CBS_MAX_SD, "cbs_max_sd", "maxSD counting base search");
+  opt.branching(LatinSquare::BRANCH_CBS_MAX_REL_SD, "cbs_max_rel_sd", "maxRelSD counting base search");
+  opt.branching(LatinSquare::BRANCH_CBS_MAX_REL_RATIO, "cbs_max_rel_ratio", "maxRelRatio counting base search");
+  opt.branching(LatinSquare::BRANCH_CBS_A_AVG_SD, "cbs_a_avg_sd", "aAvgSD counting base search");
+  opt.branching(LatinSquare::BRANCH_CBS_W_SC_AVG, "cbs_w_sc_avg", "wSCAvg counting base search");
+  opt.parse(argc,argv);
+
+
   opt.parse(argc,argv);
 
   if (opt.size() >= n_examples) {
-    std::cerr << "Error: size must be between 0 and " << n_examples-1 << std::endl;
+    std::cerr << "Error: size must be between 0 and " << n_examples-1
+              << std::endl;
     return -1;
   }
 
@@ -121,7 +180,6 @@ main(int argc, char* argv[]) {
 
 
 namespace {
-
 /** \name %LatinSquare specifications
  *
  * Each specification gives the initial positions that are filled in,
