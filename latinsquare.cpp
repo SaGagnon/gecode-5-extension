@@ -69,6 +69,7 @@ public:
 
     cbsbranch(*this, x, CBSStrategy::A_AVG_SD);
     // In case there's no more propagators with include instrumentation
+    //TODO: Mettre quelque chose de plus "defaut"
     branch(*this, x, INT_VAR_SIZE_MIN(), INT_VAL_SPLIT_MIN());
   }
 
