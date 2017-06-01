@@ -103,6 +103,15 @@ protected:
   }
 
 public:
+  enum {
+    BRANCH_NONE, ///< Branch on rows/columns in order
+    BRANCH_AFC,  ///< Use AFC for branching
+    BRANCH_CBS_MAX_SD,
+    BRANCH_CBS_MAX_REL_SD,
+    BRANCH_CBS_MAX_REL_RATIO,
+    BRANCH_CBS_A_AVG_SD,
+    BRANCH_CBS_W_SC_AVG
+  };
   /// Construction of the model.
   Nonogram(const SizeOptions& opt)
     : Script(opt), numpb(opt.size()),
@@ -119,7 +128,68 @@ public:
         extensional(*this, m.row(h), line(spos));
     }
 
-    cbsbranch(*this, b);
+
+    switch (opt.branching()) {
+      case BRANCH_NONE:
+      {
+        /*
+         * The following branches either by columns or rows, depending on
+         * whether there are more hints relative to the height or width
+         * for columns or rows.
+         *
+         * This idea is due to Pascal Van Hentenryck and has been suggested
+         * to us by Hakan Kjellerstrand.
+         */
+
+        // Number of hints for columns
+        int cols = 0;
+        // Number of hints for rows
+        int rows = 0;
+        int spos = 2;
+        for (int w=0; w<width(); w++) {
+          int hint = spec[spos++];
+          cols += hint; spos += hint;
+        }
+        for (int h=0; h<height(); h++) {
+          int hint = spec[spos++];
+          rows += hint; spos += hint;
+        }
+
+        if (rows*width() > cols*height()) {
+          for (int w=0; w<width(); w++)
+            branch(*this, m.col(w), INT_VAR_NONE(), INT_VAL_MAX());
+        } else {
+          for (int h=0; h<height(); h++)
+            branch(*this, m.row(h), INT_VAR_NONE(), INT_VAL_MAX());
+        }
+      }
+        break;
+      case BRANCH_AFC:
+        /*
+         * The following just uses the AFC for branching. This is
+         * equivalent to SIZE/AFC in this case since the variables are
+         * binary.
+         */
+        branch(*this, b, INT_VAR_AFC_MAX(opt.decay()), INT_VAL_MAX());
+        break;
+      case BRANCH_CBS_MAX_SD:
+        cbsbranch(*this, b, CBSBranchingHeuristic::MAX_SD);
+        break;
+      case BRANCH_CBS_MAX_REL_SD:
+        cbsbranch(*this, b, CBSBranchingHeuristic::MAX_REL_SD);
+        break;
+      case BRANCH_CBS_MAX_REL_RATIO:
+        cbsbranch(*this, b, CBSBranchingHeuristic::MAX_REL_RATIO);
+        break;
+      case BRANCH_CBS_A_AVG_SD:
+        cbsbranch(*this, b, CBSBranchingHeuristic::A_AVG_SD);
+        break;
+      case BRANCH_CBS_W_SC_AVG:
+        cbsbranch(*this, b, CBSBranchingHeuristic::W_SC_AVG);
+        break;
+
+    }
+
     // In case there's no more propagators with cbs instrumentation
     branch(*this, b, INT_VAR_SIZE_MIN(), INT_VAL_SPLIT_MIN());
 
@@ -163,7 +233,16 @@ int
 main(int argc, char* argv[]) {
   SizeOptions opt("Nonogram");
 
+  opt.branching(Nonogram::BRANCH_CBS_MAX_SD);
+  opt.branching(Nonogram::BRANCH_NONE, "none", "Branch on rows/columns in order");
+  opt.branching(Nonogram::BRANCH_AFC, "afc", "Use AFC for branching");
+  opt.branching(Nonogram::BRANCH_CBS_MAX_SD, "cbs_max_sd", "maxSD counting base search");
+  opt.branching(Nonogram::BRANCH_CBS_MAX_REL_SD, "cbs_max_rel_sd", "maxRelSD counting base search");
+  opt.branching(Nonogram::BRANCH_CBS_MAX_REL_RATIO, "cbs_max_rel_ratio", "maxRelRatio counting base search");
+  opt.branching(Nonogram::BRANCH_CBS_A_AVG_SD, "cbs_a_avg_sd", "aAvgSD counting base search");
+  opt.branching(Nonogram::BRANCH_CBS_W_SC_AVG, "cbs_w_sc_avg", "wSCAvg counting base search");
   opt.parse(argc,argv);
+
   if (opt.size() >= n_examples) {
     std::cerr << "Error: size must be between 0 and "
               << n_examples-1 << std::endl;

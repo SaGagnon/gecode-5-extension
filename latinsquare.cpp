@@ -165,9 +165,6 @@ main(int argc, char* argv[]) {
   opt.branching(LatinSquare::BRANCH_CBS_W_SC_AVG, "cbs_w_sc_avg", "wSCAvg counting base search");
   opt.parse(argc,argv);
 
-
-  opt.parse(argc,argv);
-
   if (opt.size() >= n_examples) {
     std::cerr << "Error: size must be between 0 and " << n_examples-1
               << std::endl;
