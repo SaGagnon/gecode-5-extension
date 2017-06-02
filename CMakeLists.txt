@@ -20,3 +20,6 @@ target_link_libraries(latinsquare ${Gecode_LIBRARIES})
 
 add_executable(nonogram nonogram.cpp)
 target_link_libraries(nonogram ${Gecode_LIBRARIES})
+
+add_executable(langford-number langford-number.cpp)
+target_link_libraries(langford-number ${Gecode_LIBRARIES})
