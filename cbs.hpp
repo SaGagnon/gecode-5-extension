@@ -9,136 +9,14 @@
 
 using namespace Gecode;
 
-class ChangedPropagators : public LocalHandle {
-protected:
-  class ChangedPropagatorO : public LocalObject {
-  public:
-    typedef __gnu_cxx::hash_set<unsigned int, __gnu_cxx::hash<unsigned int>,
-      __gnu_cxx::equal_to<unsigned int>,
-      Gecode::space_allocator<unsigned int> > Set;
-    Set changed;
-  public:
-    ChangedPropagatorO(Space& home)
-      : LocalObject(home),
-        changed(Set::size_type(), Set::hasher(), Set::key_equal(),
-                Set::allocator_type(home)) {}
-    ChangedPropagatorO(Space& home, bool share,
-                            ChangedPropagatorO& o)
-      : LocalObject(home,share,o),
-        changed(o.changed.begin(), o.changed.end(),
-                Set::size_type(), Set::hasher(), Set::key_equal(),
-                Set::allocator_type(home)) {}
-    virtual LocalObject* copy(Space& home, bool share) {
-      return new (home) ChangedPropagatorO(home,share,*this);
-    }
-  };
-public:
-  ChangedPropagators(void)
-    : LocalHandle() {}
-  ChangedPropagators(Space& home)
-    : LocalHandle(new (home) ChangedPropagatorO(home)) {}
-  void insert(unsigned int prop_id) {
-    ChangedPropagatorO* o =
-      static_cast<ChangedPropagatorO*>(object());
-    o->changed.insert(prop_id);
-  }
-  bool contains(unsigned int prop_id) const {
-    ChangedPropagatorO* o =
-      static_cast<ChangedPropagatorO*>(object());
-    return o->changed.find(prop_id) != o->changed.end();
-  }
-  void clear() {
-    ChangedPropagatorO* o =
-      static_cast<ChangedPropagatorO*>(object());
-    o->changed.clear();
-  }
-  ChangedPropagatorO::Set* get(void) {
-    ChangedPropagatorO* o =
-      static_cast<ChangedPropagatorO*>(object());
-    return &o->changed;
-  }
-};
-
-/**
- * \brief Class for tracking changes in variable domains during propagation
- *
- * ViewUpdateLooker is a propagator whose only goal is to track domain changes
- * in its variables via advisors; it does not do any propagation.
- *
- * Each time a variable is modified, ViewUpdateLooker receives a notification
- * via its advise method. By modifying changedProp accordingly, we can transfer
- * this information to the BranchingHeuristic before making a choice.
- *
- * PC_GEN_NONE means that the propagator is not scheduled for propagation when
- * one of its variable is modified.
- */
-template<class View>
-class ViewUpdateLooker : public NaryPropagator<View,PC_GEN_NONE> {
-  using NaryPropagator<View,PC_GEN_NONE>::x;
-protected:
-  // An advisor only concern a single variable. For this reason, we must have
-  // a council to manage every advisor for each of our variables.
-  Council<ViewAdvisor<View>> c;
-  // Shared object with BranchingHeuristic to track changes in variable domains.
-  ChangedPropagators changedProps;
-
-  // Constructor for posting
-  ViewUpdateLooker(Home home, ViewArray<View>& x, const ChangedPropagators& cp)
-    : NaryPropagator<View,PC_GEN_NONE>(home,x), c(home), changedProps(cp) {
-    for (int i=0; i<x.size(); i++)
-      (void) new (home) ViewAdvisor<View>(home, *this, c, x[i]);
-  }
-  // Constructor for cloning
-  ViewUpdateLooker(Space& home, bool share, ViewUpdateLooker<View>& p)
-    : NaryPropagator<View,PC_GEN_NONE>(home,share,p) {
-    c.update(home,share,p.c);
-    changedProps.update(home,share,p.changedProps);
-  }
-public:
-  static ExecStatus post(Home home, ViewArray<View>& x,
-                         const ChangedPropagators & cp) {
-    (void) new (home) ViewUpdateLooker<View>(home,x,cp);
-    return ES_OK;
-  }
-  virtual ExecStatus advise(Space& home, Advisor &_a, const Delta& d) {
-    ViewAdvisor<View>& a(static_cast<ViewAdvisor<View>&>(_a));
-    View v(a.view());
-    for (SubscribedPropagators sp(v); sp(); ++sp)
-      changedProps.insert(sp.propagator().id());
-
-    // If the view is assigned, we don't need its advisor anymore.
-    if (a.view().assigned())
-      a.dispose(home,c);
-
-    // We can delete the propagator if we have no advisor left
-    return c.empty() ? home.ES_SUBSUMED(*this) : ES_FIX;
-  }
-  virtual ExecStatus propagate(Space&, const ModEventDelta&) {
-    // The propagator is not subscribed to any of its variable. Thus, this
-    // method won't be called.
-    GECODE_NEVER;
-    return ES_FIX;
-  }
-  virtual Actor* copy(Space& home, bool share) {
-    return new (home) ViewUpdateLooker<View>(home,share,*this);
-  }
-  virtual size_t dispose(Space& home) {
-    for (Advisors<ViewAdvisor<View>> va(c); va(); ++va)
-      va.advisor().dispose(home,c);
-    c.dispose(home);
-    (void) NaryPropagator<View,PC_GEN_NONE>::dispose(home);
-    return sizeof(*this);
-  }
-};
-
 struct Record { unsigned int var_id; int val; double density; };
 typedef __gnu_cxx::hash_map< unsigned int, std::pair<size_t,Record*>,
   __gnu_cxx::hash<unsigned int>, __gnu_cxx::equal_to<unsigned int>,
   Gecode::space_allocator<std::pair<size_t,Record*>> > LogDensity;
 
-typedef __gnu_cxx::hash_map< unsigned int, double,
+typedef __gnu_cxx::hash_map< unsigned int, std::pair<size_t, double>,
   __gnu_cxx::hash<unsigned int>, __gnu_cxx::equal_to<unsigned int>,
-  Gecode::space_allocator<double> > LogSlnCnt;
+  Gecode::space_allocator<std::pair<size_t, double> > > LogProp;
 
 
 class VarIdToPos : public SharedHandle {
@@ -377,7 +255,7 @@ protected:
   VADesc xD;
   // The log in which the set method is currently inserting
   LogDensity *logDensity;
-  LogSlnCnt *logSlnCnt;
+  LogProp *logProp;
 public:
   /**
    * Constructor for posting.
@@ -412,9 +290,9 @@ public:
     assert(_logDensity != NULL);
     logDensity = _logDensity;
   }
-  void set_log_sln_cnt(LogSlnCnt *_logSlnCnt) {
+  void set_log_sln_cnt(LogProp *_logSlnCnt) {
     assert(_logSlnCnt != NULL);
-    logSlnCnt = _logSlnCnt;
+    logProp = _logSlnCnt;
   }
   // Method for specifying the propagator that is currently using the set
   // method of this class
@@ -432,7 +310,7 @@ public:
   }
   virtual void setSlnCnt(double slnCnt) {
     assert(current_prop != -1);
-    (*logSlnCnt)[current_prop] = slnCnt;
+    (*logProp)[current_prop].second = slnCnt;
   }
 
   virtual Candidate getChoice(Space& home) {
@@ -456,7 +334,7 @@ public:
       for (unsigned int i=0; i<nb_records; ++i) {
         Record r = it->second.second[i];
         for (int f=0; f<n_features; f++) {
-          features[f]->aggregate(xD,prop_id,(*logSlnCnt)[prop_id],r);
+          features[f]->aggregate(xD,prop_id,(*logProp)[prop_id].second,r);
         }
       }
     }
@@ -586,23 +464,21 @@ class CBSBrancher : public Brancher {
 protected:
   ViewArray<View> x;
   BranchingHeur<View> heur;
-  ChangedPropagators changedProps;
   LogDensity logDensity;
-  LogSlnCnt logSlnCnt;
+  LogProp logProp;
 public:
-  CBSBrancher(Home home, ViewArray<View>& x0, const ChangedPropagators& spc)
-    : Brancher(home), x(x0), heur(home,x0), changedProps(spc),
+  CBSBrancher(Home home, ViewArray<View>& x0)
+    : Brancher(home), x(x0), heur(home,x0),
       logDensity(LogDensity::size_type(), LogDensity::hasher(),
                  LogDensity::key_equal(), LogDensity::allocator_type(home)),
-      logSlnCnt(LogSlnCnt::size_type(), LogSlnCnt::hasher(),
-                LogSlnCnt::key_equal(), LogSlnCnt::allocator_type(home))
+      logProp(LogProp::size_type(), LogProp::hasher(),
+                LogProp::key_equal(), LogProp::allocator_type(home))
   {
     // Because we must call the destructor of aAvgSD
     home.notice(*this,AP_DISPOSE);
   }
-  static void post(Home home, ViewArray<View>& x,
-                   const ChangedPropagators& spc) {
-    (void) new (home) CBSBrancher(home,x,spc);
+  static void post(Home home, ViewArray<View>& x) {
+    (void) new (home) CBSBrancher(home,x);
   }
   virtual size_t dispose(Space& home) {
     home.ignore(*this, AP_DISPOSE);
@@ -617,11 +493,10 @@ public:
       logDensity(b.logDensity.begin(), b.logDensity.end(),
                  LogDensity::size_type(), LogDensity::hasher(),
                  LogDensity::key_equal(), LogDensity::allocator_type(home)),
-      logSlnCnt(b.logSlnCnt.begin(), b.logSlnCnt.end(),
-                 LogSlnCnt::size_type(), LogSlnCnt::hasher(),
-                 LogSlnCnt::key_equal(), LogSlnCnt::allocator_type(home)) {
+      logProp(b.logProp.begin(), b.logProp.end(),
+                 LogProp::size_type(), LogProp::hasher(),
+                 LogProp::key_equal(), LogProp::allocator_type(home)) {
     x.update(home,share,b.x);
-    changedProps.update(home,share,b.changedProps);
 
     for (LogDensity::iterator it=logDensity.begin(); it!=logDensity.end(); ++it) {
       unsigned int prop_id = it->first;
@@ -645,23 +520,15 @@ public:
   // choice
   virtual const Choice* choice(Space& home) {
     // Active propagators and the size we need for their log.
-    // TODO: Est-ce que je peux avoir les active props de cette manière?
-    // TODO: Je pense que oui. Les propagateurs disabled sont seulement mis
-    // TODO: dans la queue idle sans faire de propagations, ce qui ne change
-    // TODO: rien pour nous. Il faut cependant savoir si on utilise les
-    // TODO: propagateurs idle.
-    //
     // We considere a propagator as "active" only if he supports cbs().
-    __gnu_cxx::hash_map<unsigned int, size_t> activeProps;
-    for (int i=0; i<x.size(); i++) {
-      for (SubscribedPropagators sp(x[i]); sp(); ++sp) {
-        if (!sp.propagator().cbs(home,NULL)) continue;
-        unsigned int prop_id = sp.propagator().id();
-        bool contains = activeProps.find(prop_id) != activeProps.end();
-        if (contains)
-          activeProps[prop_id] += x[i].size();
-        else
-          activeProps[prop_id] = x[i].size();
+    // TODO: Commentaire
+    __gnu_cxx::hash_map<unsigned int, int> activeProps;
+    for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
+      int log_size = p.propagator().cbs(home,NULL);
+      // If the propagator supports cbs and has records
+      if (log_size != 0) {
+        assert(log_size > 1);
+        activeProps[p.propagator().id()] = log_size;
       }
     }
 
@@ -681,28 +548,29 @@ public:
         // TODO: Trouver une manière de free comme il le faut (avec vrai grandeur, pas nb element en ce moment)...
 //        home.free(log[prop_id].second, log[prop_id].first);
         logDensity.erase(prop_id);
-        logSlnCnt.erase(prop_id);
+        logProp.erase(prop_id);
       }
     }
 
     // We specify the log that will be modified when the propagators use the
     // CBS::set()
     heur.set_log_density(&logDensity);
-    heur.set_log_sln_cnt(&logSlnCnt);
+    heur.set_log_sln_cnt(&logProp);
     for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
       if (!p.propagator().cbs(home,NULL)) continue;
       unsigned int prop_id = p.propagator().id();
-      // Activity in propagator since last branching
-      bool changed = changedProps.contains(prop_id);
       // Propagator already in the log?
       bool in_log = logDensity.find(prop_id) != logDensity.end();
 
       if (in_log) {
+        bool changed = logProp[prop_id].first != activeProps[prop_id];
         if (changed) {
           // We discard the previous entries by setting the count to 0 (we
           // thus reuse previous allocated memory. The number of records can't
           // grow).
           logDensity[prop_id].first = 0;
+          // TODO: Comment
+          logProp[prop_id].first = (size_t)activeProps[prop_id];
         } else {
           // We continue, meaning we will use the previous entries
           continue;
@@ -712,19 +580,24 @@ public:
         // new propagator
         logDensity[prop_id] =
           std::make_pair(0, home.alloc<Record>(activeProps[prop_id]));
+        logProp[prop_id] = std::make_pair(activeProps[prop_id], 0);
       }
       heur.set_current_prop(prop_id);
       p.propagator().cbs(home,&heur);
     }
-
-    // Clear for the next round of propagations (use of advisor in our case)
-    changedProps.clear();
 
     // We find the choice.
     Candidate c = heur.getChoice(home);
     static int count=0;
     assert(!x[c.idx].assigned());
     assert(x[c.idx].in(c.val));
+
+    for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
+      if (!p.propagator().cbs(home, NULL)) continue;
+      unsigned int prop_id = p.propagator().id();
+      assert(logProp[prop_id].first == logDensity[prop_id].first);
+    }
+
     return new PosValChoice<int>(*this,2,c.idx,c.val);
   }
   virtual const Choice* choice(const Space&, Archive& e) {
@@ -766,24 +639,22 @@ template<class View, class T>
 void _cbsbranch(Home home, const T& x, CBSBranchingHeuristic s) {
   if (home.failed()) return;
   ViewArray<View> y(home,x);
-  ChangedPropagators spc(home);
-  ViewUpdateLooker<View>::post(home,y,spc);
 
   switch(s) {
     case MAX_SD:
-      CBSBrancher<View,maxSD>::post(home,y,spc);
+      CBSBrancher<View,maxSD>::post(home,y);
       break;
     case MAX_REL_SD:
-      CBSBrancher<View,maxRelSD>::post(home,y,spc);
+      CBSBrancher<View,maxRelSD>::post(home,y);
       break;
     case MAX_REL_RATIO:
-      CBSBrancher<View,maxRelRatio>::post(home,y,spc);
+      CBSBrancher<View,maxRelRatio>::post(home,y);
       break;
     case A_AVG_SD:
-      CBSBrancher<View,aAvgSD>::post(home,y,spc);
+      CBSBrancher<View,aAvgSD>::post(home,y);
       break;
     case W_SC_AVG:
-      CBSBrancher<View,wcSCAvg>::post(home,y,spc);
+      CBSBrancher<View,wcSCAvg>::post(home,y);
       break;
     default:
       GECODE_NEVER;
