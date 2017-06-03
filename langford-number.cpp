@@ -175,9 +175,11 @@ public:
     if (opt.branching() == BRANCH_NONE) {
       branch(*this, y, INT_VAR_NONE(), INT_VAL_SPLIT_MIN());
     } else if (opt.branching() == BRANCH_CBS_MAX_SD) {
+      assert(opt.propagation() == PROP_EXTENSIONAL);
       cbsbranch(*this, y, CBSBranchingHeuristic::MAX_SD);
       branch(*this, y, INT_VAR_SIZE_MIN(), INT_VAL_MAX());
     } else if (opt.branching() == BRANCH_CBS_A_AVG_SD) {
+      assert(opt.propagation() == PROP_EXTENSIONAL);
       cbsbranch(*this, y, CBSBranchingHeuristic::A_AVG_SD);
       branch(*this, y, INT_VAR_SIZE_MIN(), INT_VAL_MAX());
     }
