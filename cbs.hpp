@@ -303,6 +303,7 @@ public:
   // each of its (variable,value) pair.
   virtual void set(unsigned int var_id, int val, double density) {
     assert(current_prop != -1);
+    assert(density>0 && density<1);
     Record r; r.var_id=var_id; r.val=val; r.density=density;
     // Number of records for the current propagator
     size_t *nb_record = &(*logDensity)[current_prop].first;
