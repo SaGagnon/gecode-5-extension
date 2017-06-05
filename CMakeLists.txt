@@ -15,6 +15,7 @@ add_executable(cbs cbs.hpp)
 set_target_properties(cbs PROPERTIES LINKER_LANGUAGE CXX)
 target_link_libraries(cbs ${Gecode_LIBRARIES})
 
+
 add_executable(latinsquare latinsquare.cpp)
 target_link_libraries(latinsquare ${Gecode_LIBRARIES})
 
@@ -23,3 +24,12 @@ target_link_libraries(nonogram ${Gecode_LIBRARIES})
 
 add_executable(langford-number langford-number.cpp)
 target_link_libraries(langford-number ${Gecode_LIBRARIES})
+
+add_executable(ortho-latin ortho-latin.cpp)
+target_link_libraries(ortho-latin ${Gecode_LIBRARIES})
+
+add_executable(pentominoes pentominoes.cpp)
+target_link_libraries(pentominoes ${Gecode_LIBRARIES})
+
+add_executable(qcp qcp.cpp)
+target_link_libraries(qcp ${Gecode_LIBRARIES})
