@@ -6,6 +6,7 @@
 #include <ext/hash_set>
 #include <cstring>
 #include <tuple>
+#include <functional>
 
 using namespace Gecode;
 
@@ -17,7 +18,6 @@ typedef __gnu_cxx::hash_map< unsigned int, std::pair<size_t,Record*>,
 typedef __gnu_cxx::hash_map< unsigned int, std::pair<size_t, double>,
   __gnu_cxx::hash<unsigned int>, __gnu_cxx::equal_to<unsigned int>,
   Gecode::space_allocator<std::pair<size_t, double> > > LogProp;
-
 
 class VarIdToPos : public SharedHandle {
 protected:
@@ -98,104 +98,10 @@ struct VADesc {
 unsigned int varvalpos(const VADesc& xD, unsigned int var_id, int val) {
   return xD.positions[var_id] * xD.width + val - xD.minVal;
 }
-
-unsigned int varpos(const VADesc& xD, unsigned int var_id) {
-  return xD.positions[var_id];
-}
-
-class AbstractFeature {
-public:
-  virtual AbstractFeature* copy(Space& home, bool share) = 0;
-  virtual double get(const VADesc& xD, unsigned int var_id, int val) = 0;
-  virtual void aggregate(const VADesc& xD, unsigned int prop_id, double slnCnt,
-                         const Record& r) = 0;
-  virtual void clear(void) = 0;
-};
-
-template<class T>
-class Feature : public AbstractFeature {
-protected:
-  SharedArray<T> arr;
-public:
-  Feature() {}
-  Feature(int size) {
-    arr.init(size);
-    for (int i=0; i<size; i++)
-      arr[i] = 0;
-  }
-  Feature(Space& home, bool share, Feature& f) {
-    arr.update(home,share,f.arr);
-  }
-  void clear(void) {
-    for (int i=0; i<arr.size(); i++)
-      arr[i] = 0;
-  }
-};
-
-template<class T, class Concrete>
-class FeatureVarVal : public Feature<T> {
-protected:
-  using Feature<T>::arr;
-public:
-  FeatureVarVal() : Feature<T>() {}
-  FeatureVarVal(VADesc& xD)
-    : Feature<T>(xD.size * xD.width) {}
-  FeatureVarVal(Space& home, bool share, FeatureVarVal& f)
-    : Feature<T>(home,share,f) {}
-  virtual AbstractFeature* copy(Space& home, bool share) {
-    Concrete *ret = home.alloc<Concrete>(1);
-    *ret = Concrete(home,share,*this);
-    return ret;
-  }
-  virtual double get(const VADesc& xD, unsigned int var_id, int val) {
-    return arr[varvalpos(xD,var_id,val)];
-  }
-};
-
-// This
-#define CLASS_FEATURE(Name,Type) \
-  class Name : public FeatureVarVal<Type,Name> { \
-    using FeatureVarVal<Type,Name>::arr; \
-    using FeatureVarVal<Type,Name>::FeatureVarVal; \
-  public:
-
-
-CLASS_FEATURE(MaxDensity, double)
-  virtual void aggregate(const VADesc& xD, unsigned int prop_id, double slnCnt,
-                         const Record& r) {
-    double *dens = &arr[varvalpos(xD, r.var_id, r.val)];
-    if (*dens < r.density)
-      *dens = r.density;
-  }
-};
-
-CLASS_FEATURE(DensitySum, double)
-  virtual void aggregate(const VADesc& xD, unsigned int prop_id, double slnCnt,
-                         const Record& r) {
-    arr[varvalpos(xD, r.var_id, r.val)] += r.density;
-  }
-};
-
-CLASS_FEATURE(VarPropCount, double)
-  virtual void aggregate(const VADesc& xD, unsigned int prop_id, double slnCnt,
-                         const Record& r) {
-    arr[varvalpos(xD, r.var_id, r.val)] += 1;
-  }
-};
-
-CLASS_FEATURE(SlnCntProdDens, double)
-  virtual void aggregate(const VADesc& xD, unsigned int prop_id, double slnCnt,
-                         const Record& r) {
-    arr[varvalpos(xD, r.var_id, r.val)] += slnCnt * r.density;
-  }
-};
-
-CLASS_FEATURE(SlnCntSum, double)
-  virtual void aggregate(const VADesc& xD, unsigned int prop_id, double slnCnt,
-                         const Record& r) {
-    arr[varvalpos(xD, r.var_id, r.val)] += slnCnt;
-  }
-};
+//
+//unsigned int varpos(const VADesc& xD, unsigned int var_id) {
+//  return xD.positions[var_id];
+//}
 
 /**
  * \brief Base class for collecting densities from propagators
@@ -247,9 +153,6 @@ private:
   // Propagator that is currently using the set() method.
   int current_prop;
 protected:
-  AbstractFeature **features;
-  unsigned int n_features;
-
   // Array of variables we are using for branching
   ViewArray<View> x;
   VADesc xD;
@@ -266,11 +169,8 @@ public:
    * @param home Space in which we construct this object
    * @param x0 Variables concerning the branching heuristic
    */
-  BranchingHeuristic(Space& home, const ViewArray<View>& x0,
-                     unsigned int n_features0)
-    : x(x0), xD(x0), n_features(n_features0) {
-    features = home.alloc<AbstractFeature*>(n_features);
-  }
+  BranchingHeuristic(Space& home, const ViewArray<View>& x0)
+    : x(x0), xD(x0) {}
   /**
    * Constructor for cloning spaces
    *
@@ -279,10 +179,7 @@ public:
    * @param bh Object that is being cloned from the parent space
    */
   BranchingHeuristic(Space& home, bool share, BranchingHeuristic& bh)
-    : xD(home,share,bh.xD), n_features(bh.n_features) {
-    features = home.alloc<AbstractFeature*>(n_features);
-    for (int i=0; i<n_features; i++)
-      features[i] = bh.features[i]->copy(home,share);
+    : xD(home,share,bh.xD) {
     x.update(home,share,bh.x);
   }
   // Method for specifying the logDensity the set() method uses
@@ -314,38 +211,24 @@ public:
     (*logProp)[current_prop].second = slnCnt;
   }
 
-  virtual Candidate getChoice(Space& home) {
-    // Some memory area for computing features may be shared between all
-    // the spaces. We ask the clear thosees areas before computing.
-    for (int f=0; f<n_features; f++) {
-      features[f]->clear();
-    }
-
-    // isVarSub is true if it is inside at least one propagator that supports
-    // cbs. If we have no record in the log for this variable, it will be false
-    // and we don't want to consider it in our choice recommendation
-    __gnu_cxx::hash_set<unsigned int> isVarSub;
-
+public:
+  void for_every_log_entry(
+    std::function<void(unsigned int,double,unsigned int, int, double)> f) {
     // For every propagator in the log
-    for (LogDensity::iterator it=logDensity->begin(); it!=logDensity->end(); ++it) {
-      unsigned int prop_id = it->first;
-      size_t nb_records = it->second.first;
-      // Aggregation for every record concerning the propagator (i.e. every
-      // (variable,value) pair and their corresponding density)
+    for (auto prop : *logDensity) {
+      unsigned int prop_id = prop.first;
+      double slnCnt = (*logProp)[prop_id].second;
+      size_t nb_records = prop.second.first;
+      Record *records = prop.second.second;
       for (unsigned int i=0; i<nb_records; ++i) {
-        Record r = it->second.second[i];
-        for (int f=0; f<n_features; f++) {
-          features[f]->aggregate(xD,prop_id,(*logProp)[prop_id].second,r);
-        }
+        Record *r = &records[i];
+        f(prop_id, slnCnt, r->var_id, r->val, r->density);
       }
     }
+  }
 
-    Candidate c;
-    c.idx = -1;
-    double best_score = INT_MIN;
-
-    for (int i=0; i<x.size(); i++) {
-
+  void for_every_varIdx_val(Space& home, std::function<void(unsigned int, int)> f) {
+    for (unsigned int i=0; i<x.size(); i++) {
       bool instrumented = false;
       for (SubscribedPropagators sp(x[i]); sp(); ++sp) {
         if (sp.propagator().cbs(home,NULL)) {
@@ -356,107 +239,91 @@ public:
       if (!instrumented) continue;
 
       if (x[i].assigned()) continue;
-      for (Int::ViewValues<View> val(x[i]); val(); ++val) {
-        double score = getScore(xD,x[i].id(),val.val());
-        if (score > best_score) {
-          c.idx = i;
-          c.val = val.val();
-          best_score = score;
-        }
-      }
+      for (Int::ViewValues<View> val(x[i]); val(); ++val)
+        f(x[i].id(),val.val());
     }
-    return c;
   }
 
-protected:
-  virtual double getScore(const VADesc& xD, unsigned int var_id, int val) = 0;
+  virtual Candidate getChoice(Space& home) = 0;
 };
 
-template<typename F>
-void assign(int i, Space& home, AbstractFeature** af, VADesc& xD) {
-  af[i] = home.alloc<F>(1);
-  *static_cast<F*>(af[i]) = F(xD);
-}
-
-#define USING_BRANCHING_HEUR \
+#define USING_BH \
   using BranchingHeuristic<View>::BranchingHeuristic; \
-  using BranchingHeuristic<View>::n_features; \
-  using BranchingHeuristic<View>::features; \
   using BranchingHeuristic<View>::x; \
-  using BranchingHeuristic<View>::xD;
-
+  using BranchingHeuristic<View>::xD; \
+  using BranchingHeuristic<View>::for_every_log_entry; \
+  using BranchingHeuristic<View>::for_every_varIdx_val; \
+  typedef typename BranchingHeuristic<View>::Candidate Candidate;
 
 
 template<class View>
 class maxSD : public BranchingHeuristic<View> {
-  USING_BRANCHING_HEUR
+  USING_BH
 public:
-  maxSD(Space& home, const ViewArray<View>& x)
-    : BranchingHeuristic<View>(home,x,1) {
-    assign<MaxDensity>(0,home,features,xD);
-  }
-  virtual double getScore(const VADesc& xD, unsigned int var_id, int val)  {
-    return features[0]->get(xD,var_id,val);
+  virtual Candidate getChoice(Space& home) {
+    struct Best {int var_id; int val; double dens; }
+      best_candidate{-1,0,0};
+
+    for_every_log_entry([&](unsigned int prop_id, double slnCnt,
+                            unsigned int var_id, int val, double dens) {
+      if (dens>best_candidate.dens)
+          best_candidate = Best{var_id, val, dens};
+    });
+    return Candidate{xD.positions[best_candidate.var_id],best_candidate.val};
   }
 };
+
 
 template<class View>
 class aAvgSD : public BranchingHeuristic<View> {
-  USING_BRANCHING_HEUR
+  USING_BH
+protected:
+  SharedArray<double> tot_dens;
+  SharedArray<int> prop_count;
 public:
   aAvgSD(Space& home, const ViewArray<View>& x)
-    : BranchingHeuristic<View>(home,x,2) {
-    assign<DensitySum>(0,home,features,xD);
-    assign<VarPropCount>(1,home,features,xD);
+    : BranchingHeuristic<View>(home,x) {
+    int size = xD.size * xD.width;
+    tot_dens.init(size);
+    prop_count.init(size);
+    for (int i=0; i<size; i++) {
+      tot_dens[i] = 0;
+      prop_count[i] = 0;
+    }
   }
-  virtual double getScore(const VADesc& xD, unsigned int var_id, int val)  {
-    return features[0]->get(xD,var_id,val) / features[1]->get(xD,var_id,val);
+  aAvgSD(Space& home, bool share, aAvgSD& h)
+    : BranchingHeuristic<View>(home,share,h) {
+    tot_dens.update(home,share,h.tot_dens);
+    prop_count.update(home,share,h.prop_count);
+  }
+
+  virtual Candidate getChoice(Space& home) {
+    for (int i=0; i<tot_dens.size(); i++) {
+      tot_dens[i] = 0;
+      prop_count[i] = 0;
+    }
+
+    for_every_log_entry([&](unsigned int prop_id, double slnCnt,
+                            unsigned int var_id, int val, double dens) {
+      unsigned int idx = varvalpos(xD,var_id,val);
+      tot_dens[idx] += dens;
+      prop_count[idx] += 1;
+    });
+
+    struct Best { int var_id; int val; double dens_moy;
+    } best_candidate{-1,0,0};
+
+    for_every_varIdx_val(home, [&](unsigned var_id, int val) {
+      unsigned int idx = varvalpos(xD,var_id,val);
+      double dens_moy = tot_dens[idx] / (double)prop_count[idx];
+      if (dens_moy > best_candidate.dens_moy)
+        best_candidate = Best{var_id,val,dens_moy};
+    });
+
+    assert(best_candidate.var_id != -1);
+    return Candidate{xD.positions[best_candidate.var_id],best_candidate.val};
   }
 };
-
-
-template<class View>
-class maxRelSD : public BranchingHeuristic<View> {
-  USING_BRANCHING_HEUR
-public:
-  maxRelSD(Space& home, const ViewArray<View>& x)
-    : BranchingHeuristic<View>(home,x,1) {
-    assign<MaxDensity>(0,home,features,xD);
-  }
-  virtual double getScore(const VADesc& xD, unsigned int var_id, int val)  {
-    return features[0]->get(xD,var_id,val) - 1.0/x[varpos(xD,var_id)].size();
-  }
-};
-
-
-template<class View>
-class maxRelRatio : public BranchingHeuristic<View> {
-  USING_BRANCHING_HEUR
-public:
-  maxRelRatio(Space& home, const ViewArray<View>& x)
-    : BranchingHeuristic<View>(home,x,1) {
-    assign<MaxDensity>(0,home,features,xD);
-  }
-  virtual double getScore(const VADesc& xD, unsigned int var_id, int val)  {
-    return features[0]->get(xD,var_id,val) * x[varpos(xD,var_id)].size();
-  }
-};
-
-
-template<class View>
-class wcSCAvg : public BranchingHeuristic<View> {
-  USING_BRANCHING_HEUR
-public:
-  wcSCAvg(Space& home, const ViewArray<View>& x)
-    : BranchingHeuristic<View>(home,x,2) {
-    assign<SlnCntProdDens>(0,home,features,xD);
-    assign<SlnCntSum>(1,home,features,xD);
-  }
-  virtual double getScore(const VADesc& xD, unsigned int var_id, int val)  {
-    return features[0]->get(xD,var_id,val) / features[1]->get(xD,var_id,val);
-  }
-};
-
 
 
 template<class View, template<class> class BranchingHeur>
@@ -473,8 +340,7 @@ public:
       logDensity(LogDensity::size_type(), LogDensity::hasher(),
                  LogDensity::key_equal(), LogDensity::allocator_type(home)),
       logProp(LogProp::size_type(), LogProp::hasher(),
-                LogProp::key_equal(), LogProp::allocator_type(home))
-  {
+                LogProp::key_equal(), LogProp::allocator_type(home)) {
     // Because we must call the destructor of aAvgSD
     home.notice(*this,AP_DISPOSE);
   }
@@ -646,22 +512,24 @@ void _cbsbranch(Home home, const T& x, CBSBranchingHeuristic s) {
       CBSBrancher<View,maxSD>::post(home,y);
       break;
     case MAX_REL_SD:
-      CBSBrancher<View,maxRelSD>::post(home,y);
+      GECODE_NEVER;
+//      CBSBrancher<View,maxRelSD>::post(home,y);
       break;
     case MAX_REL_RATIO:
-      CBSBrancher<View,maxRelRatio>::post(home,y);
+      GECODE_NEVER;
+//      CBSBrancher<View,maxRelRatio>::post(home,y);
       break;
     case A_AVG_SD:
       CBSBrancher<View,aAvgSD>::post(home,y);
       break;
     case W_SC_AVG:
-      CBSBrancher<View,wcSCAvg>::post(home,y);
+      GECODE_NEVER;
+//      CBSBrancher<View,wcSCAvg>::post(home,y);
       break;
     default:
       GECODE_NEVER;
   }
 }
-
 
 void cbsbranch(Home home, const IntVarArgs& x, CBSBranchingHeuristic s) {
   _cbsbranch<Int::IntView,IntVarArgs>(home,x,s);
