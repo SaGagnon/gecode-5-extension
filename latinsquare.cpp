@@ -56,7 +56,8 @@ public:
     BRANCH_CBS_MAX_REL_SD,
     BRANCH_CBS_MAX_REL_RATIO,
     BRANCH_CBS_A_AVG_SD,
-    BRANCH_CBS_W_SC_AVG
+    BRANCH_CBS_W_SC_AVG,
+    BRANCH_CBS_AI
   };
   /// Constructor
   LatinSquare(const SizeOptions& opt)
@@ -104,7 +105,10 @@ public:
         cbsbranch(*this, x, CBSBranchingHeuristic::A_AVG_SD);
       } else if (opt.branching() == BRANCH_CBS_W_SC_AVG) {
         cbsbranch(*this, x, CBSBranchingHeuristic::W_SC_AVG);
+      } else if (opt.branching() == BRANCH_CBS_AI) {
+        cbsbranch(*this, x, CBSBranchingHeuristic::AI);
       }
+
       // In case there's no more propagators with include instrumentation
       //TODO: Mettre quelque chose de plus "defaut"
       branch(*this, x, INT_VAR_SIZE_MIN(), INT_VAL_SPLIT_MIN());
@@ -163,6 +167,7 @@ main(int argc, char* argv[]) {
   opt.branching(LatinSquare::BRANCH_CBS_MAX_REL_RATIO, "cbs_max_rel_ratio", "maxRelRatio counting base search");
   opt.branching(LatinSquare::BRANCH_CBS_A_AVG_SD, "cbs_a_avg_sd", "aAvgSD counting base search");
   opt.branching(LatinSquare::BRANCH_CBS_W_SC_AVG, "cbs_w_sc_avg", "wSCAvg counting base search");
+  opt.branching(LatinSquare::BRANCH_CBS_AI, "cbs_ai", "Experimental");
   opt.parse(argc,argv);
 
   if (opt.size() >= n_examples) {

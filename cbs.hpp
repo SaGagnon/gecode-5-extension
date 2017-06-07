@@ -99,9 +99,9 @@ unsigned int varvalpos(const VADesc& xD, unsigned int var_id, int val) {
   return xD.positions[var_id] * xD.width + val - xD.minVal;
 }
 //
-//unsigned int varpos(const VADesc& xD, unsigned int var_id) {
-//  return xD.positions[var_id];
-//}
+unsigned int varpos(const VADesc& xD, unsigned int var_id) {
+  return xD.positions[var_id];
+}
 
 /**
  * \brief Base class for collecting densities from propagators
@@ -325,6 +325,93 @@ public:
   }
 };
 
+template<class View>
+class ai : public BranchingHeuristic<View> {
+  USING_BH
+public:
+  virtual Candidate getChoice(Space& home) {
+    size_t size = (size_t)(xD.size * xD.width);
+    auto sum_dens     = std::vector<double>(size, 0);
+    auto nb_prop      = std::vector<int>(size, 0);
+    auto var_dom_size = std::vector<int>(size,0);
+
+    auto sum_slnCnt_x_dens = std::vector<double>(size, 0);
+    auto sum_slnCnt        = std::vector<double>(size,0);
+
+    auto maxsd        = std::vector<double>(size, 0);
+    auto aAvgSD       = std::vector<double>(size);
+    auto maxRelSD     = std::vector<double>(size);
+    auto maxRelRatio  = std::vector<double>(size);
+    auto wSCAvg       = std::vector<double>(size);
+    auto wAntiSCAvg   = std::vector<double>(size,0);
+
+    auto var_dens_entropy = std::vector<double>((size_t)xD.size, 0);
+
+    /**
+     * Computation
+     */
+    for_every_log_entry([&](unsigned int prop_id, double slnCnt,
+                            unsigned int var_id, int val, double density) {
+      unsigned int idx = varvalpos(xD,var_id,val);
+      maxsd[idx] = std::max(maxsd[idx], density);
+      sum_dens[idx] += density;
+      nb_prop[idx] += 1;
+      var_dom_size[idx] = x[varpos(xD,var_id)].size();
+
+      sum_slnCnt_x_dens[idx] += slnCnt * density;
+      sum_slnCnt[idx] += slnCnt;
+
+      unsigned int idx_var = varpos(xD, var_id);
+      var_dens_entropy[idx_var] -= density * log(density) / log(var_dom_size[idx]);
+    });
+
+
+    for_every_log_entry([&](unsigned int prop_id, double slnCnt,
+                            unsigned int var_id, int val, double density) {
+      unsigned int idx = varvalpos(xD,var_id,val);
+      wAntiSCAvg[idx] += (sum_slnCnt[idx] - slnCnt) * density / sum_slnCnt[idx];
+
+    });
+
+    for (int i=0; i<size; i++) {
+      aAvgSD[i] = sum_dens[i] / (double)nb_prop[i];
+      maxRelSD[i] = maxsd[i] - (1.0/(double)var_dom_size[i]);
+      maxRelRatio[i] = maxsd[i] / (1.0/(double)var_dom_size[i]);
+      wSCAvg[i] = sum_slnCnt_x_dens[i] / sum_slnCnt[i];
+    }
+
+    struct Best { int var_id; int val; double score;
+    } best_candidate{-1,0,0};
+
+    for_every_varIdx_val(home, [&](unsigned var_id, int val) {
+      unsigned int idx = varvalpos(xD,var_id,val);
+      unsigned int var_idx = varpos(xD,var_id);
+
+      double x = 0;
+      x += -6.79 * maxsd[idx];
+      x += 13.02 * aAvgSD[idx];
+      x += -0.12 * var_dom_size[idx];
+      x += 2.51 * var_dens_entropy[var_idx];
+      x += 4.66 * maxRelSD[idx];
+      x += 1.55 * maxRelRatio[idx];
+      x += -3.42 * wSCAvg[idx];
+      x += -3.38 * wAntiSCAvg[idx];
+
+      double intercept = -5.42;
+      x += intercept;
+
+      double score = 1.0/(1.0 + exp(-x));
+//      printf("%f\n",score);
+
+      if (score > best_candidate.score)
+        best_candidate = Best{var_id,val,score};
+    });
+
+    assert(best_candidate.var_id != -1);
+    return Candidate{xD.positions[best_candidate.var_id],best_candidate.val};
+  }
+
+};
 
 template<class View, template<class> class BranchingHeur>
 class CBSBrancher : public Brancher {
@@ -498,7 +585,8 @@ enum CBSBranchingHeuristic {
   MAX_REL_SD,
   MAX_REL_RATIO,
   A_AVG_SD,
-  W_SC_AVG
+  W_SC_AVG,
+  AI
 };
 
 
@@ -525,6 +613,9 @@ void _cbsbranch(Home home, const T& x, CBSBranchingHeuristic s) {
     case W_SC_AVG:
       GECODE_NEVER;
 //      CBSBrancher<View,wcSCAvg>::post(home,y);
+      break;
+    case AI:
+      CBSBrancher<View,ai>::post(home,y);
       break;
     default:
       GECODE_NEVER;
