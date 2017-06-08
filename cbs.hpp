@@ -142,7 +142,7 @@ unsigned int varpos(const VADesc& xD, unsigned int var_id) {
  * between computation in a Log and reuse them if possible.
  */
 template<class View>
-class BranchingHeuristic : public CBS {
+class BranchingHeuristic : public SolnDistribution {
 public:
   // A choice for branching
   struct Candidate {
@@ -198,7 +198,8 @@ public:
   }
   // Method used by all propagators for communicating calculated densities for
   // each of its (variable,value) pair.
-  virtual void set(unsigned int var_id, int val, double density) {
+  virtual void setMarginalDistribution(unsigned int var_id, int val,
+                                       double density) {
     assert(current_prop != -1);
     assert(density>0 && density<1);
     Record r; r.var_id=var_id; r.val=val; r.density=density;
@@ -206,9 +207,9 @@ public:
     size_t *nb_record = &(*logDensity)[current_prop].first;
     (*logDensity)[current_prop].second[(*nb_record)++] = r;
   }
-  virtual void setSlnCnt(double slnCnt) {
+  virtual void setSupportSize(double count) {
     assert(current_prop != -1);
-    (*logProp)[current_prop].second = slnCnt;
+    (*logProp)[current_prop].second = count;
   }
 
 public:
@@ -388,11 +389,11 @@ public:
       unsigned int var_idx = varpos(xD,var_id);
 
       double x = 0;
-      x += -8.90 * maxsd[idx];
-      x += 13.28 * aAvgSD[idx];
+      x += -7.71 * maxsd[idx];
+      x += 12.17 * aAvgSD[idx];
 //      x += -0.09 * var_dom_size[idx];
 //      x += 1.53 * var_dens_entropy[var_idx];
-      x += 8.93 * maxRelSD[idx];
+      x += 7.94 * maxRelSD[idx];
 //      x += 0.92 * maxRelRatio[idx];
 //      x += -3.91 * wSCAvg[idx];
 //      x += -3.86 * wAntiSCAvg[idx];
