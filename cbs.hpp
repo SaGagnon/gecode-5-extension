@@ -388,16 +388,16 @@ public:
       unsigned int var_idx = varpos(xD,var_id);
 
       double x = 0;
-      x += -6.79 * maxsd[idx];
-      x += 13.02 * aAvgSD[idx];
-      x += -0.12 * var_dom_size[idx];
-      x += 2.51 * var_dens_entropy[var_idx];
-      x += 4.66 * maxRelSD[idx];
-      x += 1.55 * maxRelRatio[idx];
-      x += -3.42 * wSCAvg[idx];
-      x += -3.38 * wAntiSCAvg[idx];
+      x += -8.90 * maxsd[idx];
+      x += 13.28 * aAvgSD[idx];
+//      x += -0.09 * var_dom_size[idx];
+//      x += 1.53 * var_dens_entropy[var_idx];
+      x += 8.93 * maxRelSD[idx];
+//      x += 0.92 * maxRelRatio[idx];
+//      x += -3.91 * wSCAvg[idx];
+//      x += -3.86 * wAntiSCAvg[idx];
 
-      double intercept = -5.42;
+      double intercept = -2.33;
       x += intercept;
 
       double score = 1.0/(1.0 + exp(-x));
@@ -407,6 +407,7 @@ public:
         best_candidate = Best{var_id,val,score};
     });
 
+//    printf("score=%f\n",best_candidate.score);
     assert(best_candidate.var_id != -1);
     return Candidate{xD.positions[best_candidate.var_id],best_candidate.val};
   }
