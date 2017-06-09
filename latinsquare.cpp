@@ -95,19 +95,35 @@ public:
     } else if (opt.branching() == BRANCH_SIZE_ACTIVITY) {
       branch(*this, x, INT_VAR_ACTIVITY_SIZE_MAX(opt.decay()), INT_VAL_MIN());
     } else {
+
+
+      std::string branching_name;
       if (opt.branching() == BRANCH_CBS_MAX_SD) {
         cbsbranch(*this, x, CBSBranchingHeuristic::MAX_SD);
+        branching_name = "maxSD";
       } else if (opt.branching() == BRANCH_CBS_MAX_REL_SD) {
         cbsbranch(*this, x, CBSBranchingHeuristic::MAX_REL_SD);
+        branching_name = "maxRelSD";
       } else if (opt.branching() == BRANCH_CBS_MAX_REL_RATIO) {
         cbsbranch(*this, x, CBSBranchingHeuristic::MAX_REL_RATIO);
+        branching_name = "maxRelRatio";
       } else if (opt.branching() == BRANCH_CBS_A_AVG_SD) {
         cbsbranch(*this, x, CBSBranchingHeuristic::A_AVG_SD);
+        branching_name = "aAvgSD";
       } else if (opt.branching() == BRANCH_CBS_W_SC_AVG) {
         cbsbranch(*this, x, CBSBranchingHeuristic::W_SC_AVG);
+        branching_name = "wSCAvg";
       } else if (opt.branching() == BRANCH_CBS_AI) {
         cbsbranch(*this, x, CBSBranchingHeuristic::AI);
+        branching_name = "ai";
       }
+
+      // TODO: Mettre une option command line pour activer cette ligne ou non
+      int ret = CBSDB::start_execution("latinsquare", opt.size(), "Gecode",
+                                       CBSDB::FULL, 10000, branching_name,
+                                       "base",
+                                       "/media/sam/hdd3tb/cbs-scripts"
+                                         "/bd/gecode_5/cbs.db");
 
       // In case there's no more propagators with include instrumentation
       //TODO: Mettre quelque chose de plus "defaut"
@@ -121,6 +137,10 @@ public:
   /// Constructor for cloning \a s
   LatinSquare(bool share, LatinSquare& s) : Script(share,s) {
     x.update(*this,share,s.x);
+  }
+
+  ~LatinSquare() {
+    CBSDB::insert_if_solution(x);
   }
 
   /// Perform copying during cloning
@@ -176,7 +196,8 @@ main(int argc, char* argv[]) {
     return -1;
   }
 
-  Script::run<LatinSquare,BAB,SizeOptions>(opt);
+  Script::run<LatinSquare,DFS,SizeOptions>(opt);
+  CBSDB::end_execution();
   return 0;
 }
 

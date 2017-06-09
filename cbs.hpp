@@ -8,6 +8,12 @@
 #include <tuple>
 #include <functional>
 
+#define SQL
+
+#ifdef SQL
+#include "sql-interface.hh"
+#endif
+
 using namespace Gecode;
 
 struct Record { unsigned int var_id; int val; double density; };
@@ -228,7 +234,8 @@ public:
     }
   }
 
-  void for_every_varIdx_val(Space& home, std::function<void(unsigned int, int)> f) {
+  void for_every_varIdx_val(Space& home,
+                            std::function<void(unsigned int, int)> f) {
     for (unsigned int i=0; i<x.size(); i++) {
       bool instrumented = false;
       for (SubscribedPropagators sp(x[i]); sp(); ++sp) {
@@ -465,7 +472,6 @@ public:
 //    CBSBrancher *ret = home.alloc<CBSBrancher>(1);
     return new (home) CBSBrancher(home,share,*this);
   }
-  // status
   virtual bool status(const Space& home) const {
     Space& h = const_cast<Space&>(home);
     for (Propagators p(h, PropagatorGroup::all); p(); ++p)
@@ -473,8 +479,11 @@ public:
         return true;
     return false;
   }
-  // choice
   virtual const Choice* choice(Space& home) {
+    #ifdef SQL
+    CBSDB::new_node();
+    #endif
+
     // Active propagators and the size we need for their log.
     // We considere a propagator as "active" only if he supports cbs().
     // TODO: Commentaire
@@ -517,9 +526,10 @@ public:
       unsigned int prop_id = p.propagator().id();
       // Propagator already in the log?
       bool in_log = logDensity.find(prop_id) != logDensity.end();
+      bool changed = true;
 
       if (in_log) {
-        bool changed = logProp[prop_id].first != activeProps[prop_id];
+        changed = logProp[prop_id].first != activeProps[prop_id];
         if (changed) {
           // We discard the previous entries by setting the count to 0 (we
           // thus reuse previous allocated memory. The number of records can't
@@ -527,9 +537,6 @@ public:
           logDensity[prop_id].first = 0;
           // TODO: Comment
           logProp[prop_id].first = (size_t)activeProps[prop_id];
-        } else {
-          // We continue, meaning we will use the previous entries
-          continue;
         }
       } else {
         // Otherwise, we need to allocate space for the records of the
@@ -538,9 +545,29 @@ public:
           std::make_pair(0, home.alloc<Record>(activeProps[prop_id]));
         logProp[prop_id] = std::make_pair(activeProps[prop_id], 0);
       }
-      heur.set_current_prop(prop_id);
-      p.propagator().cbs(home,&heur);
+
+      if (!in_log || changed) {
+        heur.set_current_prop(prop_id);
+        p.propagator().cbs(home,&heur);
+      }
+      #ifdef SQL
+      CBSDB::new_propagator("", prop_id, "", logProp[prop_id].second);
+      #endif
     }
+
+    #ifdef SQL
+    // TODO: Mettre un flag qui fait ça ou non ici...
+    for (auto prop : logDensity) {
+      unsigned int prop_id = prop.first;
+      double slnCnt = logProp[prop_id].second;
+      size_t nb_records = prop.second.first;
+      Record *records = prop.second.second;
+      for (unsigned int i=0; i<nb_records; ++i) {
+        Record *r = &records[i];
+        CBSDB::insert_varval_density(prop_id, r->var_id, r->val, r->density);
+      }
+    }
+    #endif
 
     // We find the choice.
     Candidate c = heur.getChoice(home);
