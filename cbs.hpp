@@ -7,8 +7,23 @@
 #include <cstring>
 #include <tuple>
 #include <functional>
+#include <map>
+#include <unordered_map>
 
-#define SQL
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+
+
+#include <fstream>
+#include <iostream>
+
+
+//#define SQL
 
 #ifdef SQL
 #include "sql-interface.hh"
@@ -208,6 +223,7 @@ public:
                                        double density) {
     assert(current_prop != -1);
     assert(density>0 && density<1);
+    assert(x[xD.positions[var_id]].in(val));
     Record r; r.var_id=var_id; r.val=val; r.density=density;
     // Number of records for the current propagator
     size_t *nb_record = &(*logDensity)[current_prop].first;
@@ -261,6 +277,8 @@ public:
   using BranchingHeuristic<View>::xD; \
   using BranchingHeuristic<View>::for_every_log_entry; \
   using BranchingHeuristic<View>::for_every_varIdx_val; \
+  using BranchingHeuristic<View>::logDensity; \
+  using BranchingHeuristic<View>::logProp; \
   typedef typename BranchingHeuristic<View>::Candidate Candidate;
 
 
@@ -333,31 +351,98 @@ public:
   }
 };
 
+
+const size_t SIZE = 30*30*30;
+
 template<class View>
 class ai : public BranchingHeuristic<View> {
   USING_BH
+protected:
+  static double sum_dens[SIZE];
+  static int nb_prop[SIZE];
+  static int var_dom_size[SIZE];
+
+  static double sum_slnCnt_x_dens[SIZE];
+  static double sum_slnCnt[SIZE];
+  static double slnCnt[SIZE];
+
+  static double maxsd[SIZE];
+  static double aAvgSD[SIZE];
+  static double maxRelSD[SIZE];
+  static double maxRelRatio[SIZE];
+  static double wSCAvg[SIZE];
+  static double wAntiSCAvg[SIZE];
+
+  static double ctrTightness_x_dens[SIZE];
+  static double sum_ctrTightness[SIZE];
+  static double wTAvg[SIZE];
+  static double wAntiTAvg[SIZE];
+
+  static double sum_prop_card_prod_x_density[SIZE];
+  static double sum_prop_card_prod[SIZE];
+  static double wDAvg[SIZE];
 public:
   virtual Candidate getChoice(Space& home) {
     size_t size = (size_t)(xD.size * xD.width);
-    auto sum_dens     = std::vector<double>(size, 0);
-    auto nb_prop      = std::vector<int>(size, 0);
-    auto var_dom_size = std::vector<int>(size,0);
 
-    auto sum_slnCnt_x_dens = std::vector<double>(size, 0);
-    auto sum_slnCnt        = std::vector<double>(size,0);
+    /// CLEAR
+    for (int i=0; i<SIZE; i++) {
+      sum_dens[i] = 0;
+      nb_prop[i] = 0;
+      var_dom_size[i] = 0;
+      sum_slnCnt_x_dens[i] = 0;
+      sum_slnCnt[i] = 0;
+      slnCnt[i] = 0;
+      maxsd[i] = 0;
+      aAvgSD[i] = 0;
+      maxRelSD[i] = 0;
+      maxRelRatio[i] = 0;
+      wSCAvg[i] = 0;
+      wAntiSCAvg[i] = 0;
+      wTAvg[i] = 0;
+      wAntiTAvg[i] = 0;
 
-    auto maxsd        = std::vector<double>(size, 0);
-    auto aAvgSD       = std::vector<double>(size);
-    auto maxRelSD     = std::vector<double>(size);
-    auto maxRelRatio  = std::vector<double>(size);
-    auto wSCAvg       = std::vector<double>(size);
-    auto wAntiSCAvg   = std::vector<double>(size,0);
+      ctrTightness_x_dens[i] = 0;
+      sum_ctrTightness[i] = 0;
 
-    auto var_dens_entropy = std::vector<double>((size_t)xD.size, 0);
+      sum_prop_card_prod_x_density[i] = 0;
+      sum_prop_card_prod[i] = 0;
+      wDAvg[i] = 0;
+    }
+    /// CLEAR
+
+
+
+    std::map<std::pair<unsigned int, unsigned int>, double> var_dens_entropy;
+
+    std::unordered_map<unsigned int, double> prop_card_prod;
+    std::unordered_map<unsigned int, double> prop_proj_tightness;
 
     /**
      * Computation
      */
+
+    // Product of domain of every variables in each proapgators
+    for (int i=0; i<x.size(); i++) {
+      for (SubscribedPropagators sp(x[i]); sp(); ++sp) {
+        if (sp.propagator().cbs(home, NULL)) {
+          unsigned int prop_id = sp.propagator().id();
+          if (prop_card_prod.find(prop_id) == prop_card_prod.end())
+            prop_card_prod[prop_id] = 1;
+          prop_card_prod[prop_id] *= x[i].size();
+        }
+      }
+    }
+
+    // Tightness of each propagator
+    for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
+      if (p.propagator().cbs(home, NULL)) {
+        unsigned int prop_id = p.propagator().id();
+        double slnCnt = (*logProp)[prop_id].second;
+        prop_proj_tightness[prop_id] = slnCnt / prop_card_prod[prop_id];
+      }
+    }
+
     for_every_log_entry([&](unsigned int prop_id, double slnCnt,
                             unsigned int var_id, int val, double density) {
       unsigned int idx = varvalpos(xD,var_id,val);
@@ -369,8 +454,16 @@ public:
       sum_slnCnt_x_dens[idx] += slnCnt * density;
       sum_slnCnt[idx] += slnCnt;
 
-      unsigned int idx_var = varpos(xD, var_id);
-      var_dens_entropy[idx_var] -= density * log(density) / log(var_dom_size[idx]);
+      auto key = std::make_pair(prop_id, var_id);
+      if (var_dens_entropy.find(key) == var_dens_entropy.end())
+        var_dens_entropy[key] = 0;
+      var_dens_entropy[key] -= density*log(density) / log(var_dom_size[idx]);
+
+      ctrTightness_x_dens[idx] = prop_proj_tightness[prop_id] * density;
+      sum_ctrTightness[idx] += prop_proj_tightness[prop_id];
+
+      sum_prop_card_prod_x_density[idx] += prop_card_prod[prop_id] * density;
+      sum_prop_card_prod[idx] += prop_card_prod[prop_id];
     });
 
 
@@ -378,49 +471,164 @@ public:
                             unsigned int var_id, int val, double density) {
       unsigned int idx = varvalpos(xD,var_id,val);
       wAntiSCAvg[idx] += (sum_slnCnt[idx] - slnCnt) * density / sum_slnCnt[idx];
-
+      wAntiTAvg[idx] += (sum_ctrTightness[idx] - prop_proj_tightness[prop_id])
+                        * density / sum_ctrTightness[idx];
     });
 
-    for (int i=0; i<size; i++) {
-      aAvgSD[i] = sum_dens[i] / (double)nb_prop[i];
-      maxRelSD[i] = maxsd[i] - (1.0/(double)var_dom_size[i]);
-      maxRelRatio[i] = maxsd[i] / (1.0/(double)var_dom_size[i]);
-      wSCAvg[i] = sum_slnCnt_x_dens[i] / sum_slnCnt[i];
-    }
+    for_every_varIdx_val(home, [&](unsigned var_id, int val) {
+      unsigned int idx = varvalpos(xD,var_id,val);
+      aAvgSD[idx] = sum_dens[idx] / (double)nb_prop[idx];
+      maxRelSD[idx] = maxsd[idx] - (1.0/(double)var_dom_size[idx]);
+      maxRelRatio[idx] = maxsd[idx] / (1.0/(double)var_dom_size[idx]);
+      wSCAvg[idx] = sum_slnCnt_x_dens[idx] / sum_slnCnt[idx];
+      wTAvg[idx] = ctrTightness_x_dens[idx] / sum_ctrTightness[idx];
+      wDAvg[idx] = sum_prop_card_prod_x_density[idx] / sum_prop_card_prod[idx];
+    });
 
     struct Best { int var_id; int val; double score;
     } best_candidate{-1,0,0};
 
-    for_every_varIdx_val(home, [&](unsigned var_id, int val) {
-      unsigned int idx = varvalpos(xD,var_id,val);
-      unsigned int var_idx = varpos(xD,var_id);
 
-      double x = 0;
-      x += -7.71 * maxsd[idx];
-      x += 12.17 * aAvgSD[idx];
-//      x += -0.09 * var_dom_size[idx];
-//      x += 1.53 * var_dens_entropy[var_idx];
-      x += 7.94 * maxRelSD[idx];
-//      x += 0.92 * maxRelRatio[idx];
-//      x += -3.91 * wSCAvg[idx];
-//      x += -3.86 * wAntiSCAvg[idx];
+    #ifdef SQL
+    // TODO: Mettre un flag qui fait ça ou non ici...
+    for (auto prop : (*logDensity)) {
+      unsigned int prop_id = prop.first;
+      double slnCnt = (*logProp)[prop_id].second;
+      size_t nb_records = prop.second.first;
+      Record *records = prop.second.second;
+      for (unsigned int i=0; i<nb_records; ++i) {
+        Record *r = &records[i];
+        unsigned int idx = varvalpos(xD,r->var_id,r->val);
+        unsigned int var_idx = varpos(xD,r->var_id);
 
-      double intercept = -2.33;
-      x += intercept;
+        CBSDB::insert_varval_density_features(
+          prop_id, r->var_id, r->val, r->density, slnCnt, sum_slnCnt[idx],
+          aAvgSD[idx], var_dom_size[idx],
+          var_dens_entropy[std::make_pair(prop_id, r->var_id)], maxRelSD[idx],
+          maxRelRatio[idx], wSCAvg[idx], wAntiSCAvg[idx], wTAvg[idx],
+          wAntiTAvg[idx], wDAvg[idx]);
+      }
 
-      double score = 1.0/(1.0 + exp(-x));
-//      printf("%f\n",score);
+    }
+    for (int i=0; i<x.size(); i++)
+      if (x[i].assigned())
+        CBSDB::insert_varval_in_assigned(x[i].varimp()->id(), x[i].val());
+    #endif
 
-      if (score > best_candidate.score)
-        best_candidate = Best{var_id,val,score};
-    });
+    /**
+     * PROP
+     */
+    for (auto prop : (*logDensity)) {
+      unsigned int prop_id = prop.first;
+      double slnCnt = (*logProp)[prop_id].second;
+      size_t nb_records = prop.second.first;
+      Record *records = prop.second.second;
 
-//    printf("score=%f\n",best_candidate.score);
+      // Best in prop
+//      struct _Best{
+//        unsigned int var_id;
+//        int val;
+//        double score;
+//        double best_dens_seen;
+//      } best_varval_in_prop{0,0,0,0};
+
+      /**
+       * (VAR,VAL) in PROP
+       */
+      for (unsigned int i = 0; i < nb_records; ++i) {
+        Record *r = &records[i];
+        unsigned int idx = varvalpos(xD, r->var_id, r->val);
+
+        auto score_varval = [&]() {
+          double _x = 0;
+//          _x += aAvgSD[idx];
+//          _x += maxRelSD[idx];
+//          return 1.0 / (1.0 + exp(-_x));
+          return aAvgSD[idx] - (1.0/(double)var_dom_size[idx]);
+        };
+
+//        /**
+//         * ON REGARDE
+//         */
+//        double dens = maxsd[idx];
+//        double best_dens = best_varval_in_prop.best_dens_seen;
+//        if (dens*0.95 > best_dens) {
+//          best_varval_in_prop = _Best{r->var_id, r->val, score_varval(), dens};
+//        } else if (dens > best_dens*0.95) {
+//          double score = score_varval();
+//          if (score > best_varval_in_prop.score)
+//            best_varval_in_prop = _Best{r->var_id, r->val, score_varval(),
+//                                        best_dens};
+//          if (dens > best_dens)
+//            best_varval_in_prop.best_dens_seen = dens;
+//        }
+
+        double score = score_varval();
+
+        if (score > best_candidate.score) {
+          best_candidate = Best{r->var_id,
+                                r->val,
+                                score};
+
+        }
+
+//      if (best_varval_in_prop.score > best_candidate.score) {
+//        best_candidate = Best{best_varval_in_prop.var_id,
+//                              best_varval_in_prop.val,
+//                              best_varval_in_prop.score};
+//      }
+      }
+
+    }
     assert(best_candidate.var_id != -1);
-    return Candidate{xD.positions[best_candidate.var_id],best_candidate.val};
+    return Candidate{xD.positions[best_candidate.var_id], best_candidate.val};
   }
 
 };
+
+//        double x = 0;
+//        x += 0.222850436077 * maxsd[idx];
+//        x += 4.60691374795 * aAvgSD[idx];
+//        x += 0.0368418587122 * var_dom_size[idx];
+//        x += 4.2498849779 *
+//          var_dens_entropy[std::make_pair(prop_id,r->var_id)];
+//        x += 2.29865995159 * maxRelSD[idx];
+//        x += 1.26150264369 * maxRelRatio[idx];
+//        x += 1.76381743389 * wSCAvg[idx];
+//        x += 1.26487771943 * wAntiSCAvg[idx];
+//        x += 0.0337647421938 * wTAvg[idx];
+//        x += -0.877825562551 * wAntiTAvg[idx];
+//        x += -0.430734215691 * wDAvg[idx];
+//
+//        double intercept = -8.65939782;
+//        x += intercept;
+//
+//        double score = 1.0/(1.0 + exp(-x));
+
+template<class View> double ai<View>::sum_dens[SIZE]{};
+template<class View> int ai<View>::nb_prop[SIZE]{};
+template<class View> int ai<View>::var_dom_size[SIZE]{};
+
+template<class View> double ai<View>::sum_slnCnt_x_dens[SIZE]{};
+template<class View> double ai<View>::sum_slnCnt[SIZE]{};
+template<class View> double ai<View>::slnCnt[SIZE]{};
+
+template<class View> double ai<View>::maxsd[SIZE]{};
+template<class View> double ai<View>::aAvgSD[SIZE]{};
+template<class View> double ai<View>::maxRelSD[SIZE]{};
+template<class View> double ai<View>::maxRelRatio[SIZE]{};
+template<class View> double ai<View>::wSCAvg[SIZE]{};
+template<class View> double ai<View>::wAntiSCAvg[SIZE]{};
+
+template<class View> double ai<View>::ctrTightness_x_dens[SIZE]{};
+template<class View> double ai<View>::sum_ctrTightness[SIZE]{};
+template<class View> double ai<View>::wTAvg[SIZE]{};
+template<class View> double ai<View>::wAntiTAvg[SIZE]{};
+
+template<class View> double ai<View>::sum_prop_card_prod_x_density[SIZE]{};
+template<class View> double ai<View>::sum_prop_card_prod[SIZE]{};
+template<class View> double ai<View>::wDAvg[SIZE]{};
+
 
 template<class View, template<class> class BranchingHeur>
 class CBSBrancher : public Brancher {
@@ -555,19 +763,19 @@ public:
       #endif
     }
 
-    #ifdef SQL
-    // TODO: Mettre un flag qui fait ça ou non ici...
-    for (auto prop : logDensity) {
-      unsigned int prop_id = prop.first;
-      double slnCnt = logProp[prop_id].second;
-      size_t nb_records = prop.second.first;
-      Record *records = prop.second.second;
-      for (unsigned int i=0; i<nb_records; ++i) {
-        Record *r = &records[i];
-        CBSDB::insert_varval_density(prop_id, r->var_id, r->val, r->density);
-      }
-    }
-    #endif
+//    #ifdef SQL
+//    // TODO: Mettre un flag qui fait ça ou non ici...
+//    for (auto prop : logDensity) {
+//      unsigned int prop_id = prop.first;
+//      double slnCnt = logProp[prop_id].second;
+//      size_t nb_records = prop.second.first;
+//      Record *records = prop.second.second;
+//      for (unsigned int i=0; i<nb_records; ++i) {
+//        Record *r = &records[i];
+//        CBSDB::insert_varval_density(prop_id, r->var_id, r->val, r->density);
+//      }
+//    }
+//    #endif
 
     // We find the choice.
     Candidate c = heur.getChoice(home);
@@ -658,5 +866,7 @@ void cbsbranch(Home home, const IntVarArgs& x, CBSBranchingHeuristic s) {
 void cbsbranch(Home home, const BoolVarArgs& x, CBSBranchingHeuristic s) {
   _cbsbranch<Int::BoolView,BoolVarArgs>(home,x,s);
 }
+
+
 
 #endif //__CBS_HPP__

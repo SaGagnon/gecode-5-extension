@@ -162,7 +162,8 @@ public:
     BRANCH_SIZE,     ///< Use smallest domain size first
     BRANCH_AFC_SIZE, ///< Use largest AFC divided by domain size
     BRANCH_CBS_MAX_SD,
-    BRANCH_CBS_A_AVG_SD
+    BRANCH_CBS_A_AVG_SD,
+    BRANCH_CBS_AI
   };
   /// Actual model
   QCP(const QCPOptions& opt0)
@@ -213,6 +214,10 @@ public:
         break;
       case BRANCH_CBS_A_AVG_SD:
         cbsbranch(*this, e, CBSBranchingHeuristic::A_AVG_SD);
+        branch(*this, e, INT_VAR_SIZE_MIN(), INT_VAL_MIN());
+        break;
+      case BRANCH_CBS_AI:
+        cbsbranch(*this, e, CBSBranchingHeuristic::AI);
         branch(*this, e, INT_VAR_SIZE_MIN(), INT_VAL_MIN());
         break;
       }
@@ -273,6 +278,8 @@ public:
   print(std::ostream& os) const {
     int n = spec.size();
     Matrix<IntVarArray> m(e, n);
+    static int nn = 0;
+    os << nn++ << std::endl;
 
     for (int i=0; i<n; i++) {
       os << "\t";
@@ -292,12 +299,15 @@ public:
 int
 main(int argc, char* argv[]) {
  QCPOptions opt("QCP");
+  opt.solutions(1);
+  opt.ipl(IPL_DOM);
 
   opt.branching(QCP::BRANCH_AFC_SIZE);
   opt.branching(QCP::BRANCH_SIZE, "size");
   opt.branching(QCP::BRANCH_AFC_SIZE, "afc");
   opt.branching(QCP::BRANCH_CBS_MAX_SD, "cbs_max_sd");
   opt.branching(QCP::BRANCH_CBS_A_AVG_SD, "cbs_a_avg_sd");
+  opt.branching(QCP::BRANCH_CBS_AI, "cbs_ai");
 
   opt.propagation(QCP::PROP_DISTINCT);
   opt.propagation(QCP::PROP_BINARY, "binary",

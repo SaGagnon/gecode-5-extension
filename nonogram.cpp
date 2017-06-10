@@ -110,7 +110,8 @@ public:
     BRANCH_CBS_MAX_REL_SD,
     BRANCH_CBS_MAX_REL_RATIO,
     BRANCH_CBS_A_AVG_SD,
-    BRANCH_CBS_W_SC_AVG
+    BRANCH_CBS_W_SC_AVG,
+    BRANCH_CBS_AI
   };
   /// Construction of the model.
   Nonogram(const SizeOptions& opt)
@@ -187,8 +188,19 @@ public:
       case BRANCH_CBS_W_SC_AVG:
         cbsbranch(*this, b, CBSBranchingHeuristic::W_SC_AVG);
         break;
+      case BRANCH_CBS_AI:
+        cbsbranch(*this, b, CBSBranchingHeuristic::AI);
+        break;
 
     }
+
+    // TODO: Mettre une option command line pour activer cette ligne ou non
+    #ifdef SQL
+    int ret = CBSDB::start_execution(
+        "nonogram", opt.size(), "Gecode", CBSDB::FULL, 10000, "maxSD",
+                                       "base", "/media/sam/hdd3tb/cbs-scripts"
+                                         "/bd/correct_sat/cbs.db");
+    #endif
 
     // In case there's no more propagators with cbs instrumentation
     branch(*this, b, INT_VAR_SIZE_MIN(), INT_VAL_SPLIT_MIN());
@@ -199,6 +211,13 @@ public:
   Nonogram(bool share, Nonogram& s)
     : Script(share,s), numpb(s.numpb), spec(s.spec) {
     b.update(*this, share, s.b);
+  }
+
+
+  ~Nonogram() {
+    #ifdef SQL
+    CBSDB::insert_if_solution(b);
+    #endif
   }
 
   /// Copy space during cloning
@@ -241,6 +260,7 @@ main(int argc, char* argv[]) {
   opt.branching(Nonogram::BRANCH_CBS_MAX_REL_RATIO, "cbs_max_rel_ratio", "maxRelRatio counting base search");
   opt.branching(Nonogram::BRANCH_CBS_A_AVG_SD, "cbs_a_avg_sd", "aAvgSD counting base search");
   opt.branching(Nonogram::BRANCH_CBS_W_SC_AVG, "cbs_w_sc_avg", "wSCAvg counting base search");
+  opt.branching(Nonogram::BRANCH_CBS_AI, "cbs_ai", "ai");
   opt.parse(argc,argv);
 
   if (opt.size() >= n_examples) {
@@ -249,6 +269,9 @@ main(int argc, char* argv[]) {
     return 1;
   }
   Script::run<Nonogram,DFS,SizeOptions>(opt);
+  #ifdef SQL
+  CBSDB::end_execution();
+  #endif
   return 0;
 }
 

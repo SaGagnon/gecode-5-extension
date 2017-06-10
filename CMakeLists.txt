@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.7)
+cmake_minimum_required(VERSION 3.6)
 project(gecode-5.0.0-extension)
 
 # Path to custom Gecode with cbs support
@@ -28,13 +28,13 @@ set(EXAMPLES
 
 
 set(SQL_SRC "")
-option(BUILD_SQL "Build SQLite profiling." ON)
+option(BUILD_SQL "Build SQLite profiling." OFF)
 if(${BUILD_SQL})
     find_package(Threads REQUIRED)
     set(SQL_SRC sqlite3.c sql-interface.cpp)
 endif()
 
-foreach(ex "latinsquare" "nonogram")
+foreach(ex "latinsquare" "nonogram" "qcp" "sudoku")
     add_executable(${ex} ${ex}.cpp ${SQL_SRC})
     target_link_libraries(${ex} ${Gecode_LIBRARIES})
     if(${BUILD_SQL})
