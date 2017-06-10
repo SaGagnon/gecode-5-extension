@@ -7,6 +7,7 @@
 #include <cstring>
 #include <tuple>
 #include <functional>
+#include <map>
 
 #define SQL
 
@@ -355,7 +356,7 @@ public:
     auto wSCAvg       = std::vector<double>(size);
     auto wAntiSCAvg   = std::vector<double>(size,0);
 
-    auto var_dens_entropy = std::vector<double>((size_t)xD.size, 0);
+    std::map<std::pair<unsigned int, unsigned int>, double> var_dens_entropy;
 
     /**
      * Computation
@@ -371,8 +372,10 @@ public:
       sum_slnCnt_x_dens[idx] += slnCnt * density;
       sum_slnCnt[idx] += slnCnt;
 
-      unsigned int idx_var = varpos(xD, var_id);
-      var_dens_entropy[idx_var] -= density * log(density) / log(var_dom_size[idx]);
+      auto key = std::make_pair(prop_id, var_id);
+      if (var_dens_entropy.find(key) == var_dens_entropy.end())
+        var_dens_entropy[key] = 0;
+      var_dens_entropy[key] -= density*log(density) / log(var_dom_size[idx]);
     });
 
 
@@ -406,9 +409,11 @@ public:
         unsigned int idx = varvalpos(xD,r->var_id,r->val);
         unsigned int var_idx = varpos(xD,r->var_id);
 
-        CBSDB::insert_varval_density_features(prop_id, r->var_id, r->val,
-          r->density, aAvgSD[idx], var_dom_size[idx], var_dens_entropy[var_idx],
-          maxRelSD[idx], maxRelRatio[idx], wSCAvg[idx], wAntiSCAvg[idx]);
+        CBSDB::insert_varval_density_features(
+          prop_id, r->var_id, r->val, r->density, slnCnt, sum_slnCnt[idx],
+          aAvgSD[idx], var_dom_size[idx],
+          var_dens_entropy[std::make_pair(prop_id, r->var_id)], maxRelSD[idx],
+          maxRelRatio[idx], wSCAvg[idx], wAntiSCAvg[idx]);
       }
     }
     #endif

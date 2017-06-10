@@ -188,26 +188,27 @@ namespace CBSDB {
   }
 
 
-  int insert_varval_density_features(unsigned int prop_id, unsigned int var_id,
-                                     int val, double dens, double a_avg_sd,
-                                     double var_dom_size,
-                                     double var_dens_entropy,
-                                     double max_rel_sd,
-                                     double max_rel_ratio, double w_sc_avg,
-                                     double w_anti_sc_avg) {
+  int insert_varval_density_features(
+    unsigned int prop_id, unsigned int var_id, int val, double dens,
+    double sln_cnt, double sum_sln_cnt, double a_avg_sd, double var_dom_size,
+    double var_dens_entropy, double max_rel_sd, double max_rel_ratio,
+    double w_sc_avg, double w_anti_sc_avg) {
     if (current_db == NULL) return CBSDB_NO_ACTION_TAKEN;
 
     if (do_we_insert()) {
       std::stringstream sql;
       sql << "insert into densities(exec_id, node_id, prop_id, var_idx, "
-        "val, dens, a_avg_sd, var_dom_size, var_dens_entropy, max_rel_sd, "
-        "max_rel_ratio, w_sc_avg, w_anti_sc_avg) values(";
+        "val, dens, log_sln_cnt, log_sum_sln_cnt, a_avg_sd, var_dom_size, "
+        "var_dens_entropy, max_rel_sd, max_rel_ratio, w_sc_avg, "
+        "w_anti_sc_avg) values(";
       sql << current_exec_id << ","
           << current_node_id << ","
           << prop_id << ","
           << var_id << ","
           << val << ","
           << dens << ","
+          << log(sln_cnt) << ","
+          << log(sum_sln_cnt) << ","
           << a_avg_sd << ","
           << var_dom_size << ","
           << var_dens_entropy << ","
