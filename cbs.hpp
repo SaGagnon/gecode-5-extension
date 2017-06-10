@@ -261,6 +261,8 @@ public:
   using BranchingHeuristic<View>::xD; \
   using BranchingHeuristic<View>::for_every_log_entry; \
   using BranchingHeuristic<View>::for_every_varIdx_val; \
+  using BranchingHeuristic<View>::logDensity; \
+  using BranchingHeuristic<View>::logProp; \
   typedef typename BranchingHeuristic<View>::Candidate Candidate;
 
 
@@ -391,25 +393,48 @@ public:
     struct Best { int var_id; int val; double score;
     } best_candidate{-1,0,0};
 
+
+    #ifdef SQL
+    // TODO: Mettre un flag qui fait ça ou non ici...
+    for (auto prop : (*logDensity)) {
+      unsigned int prop_id = prop.first;
+      double slnCnt = (*logProp)[prop_id].second;
+      size_t nb_records = prop.second.first;
+      Record *records = prop.second.second;
+      for (unsigned int i=0; i<nb_records; ++i) {
+        Record *r = &records[i];
+        unsigned int idx = varvalpos(xD,r->var_id,r->val);
+        unsigned int var_idx = varpos(xD,r->var_id);
+
+        CBSDB::insert_varval_density_features(prop_id, r->var_id, r->val,
+          r->density, aAvgSD[idx], var_dom_size[idx], var_dens_entropy[var_idx],
+          maxRelSD[idx], maxRelRatio[idx], wSCAvg[idx], wAntiSCAvg[idx]);
+      }
+    }
+    #endif
+
+
     for_every_varIdx_val(home, [&](unsigned var_id, int val) {
       unsigned int idx = varvalpos(xD,var_id,val);
       unsigned int var_idx = varpos(xD,var_id);
 
-      double x = 0;
-      x += -7.71 * maxsd[idx];
-      x += 12.17 * aAvgSD[idx];
+//      double x = 0;
+//      x += -7.71 * maxsd[idx];
+//      x += 12.17 * aAvgSD[idx];
 //      x += -0.09 * var_dom_size[idx];
 //      x += 1.53 * var_dens_entropy[var_idx];
-      x += 7.94 * maxRelSD[idx];
+//      x += 7.94 * maxRelSD[idx];
 //      x += 0.92 * maxRelRatio[idx];
 //      x += -3.91 * wSCAvg[idx];
 //      x += -3.86 * wAntiSCAvg[idx];
 
-      double intercept = -2.33;
-      x += intercept;
+//      double intercept = -2.33;
+//      x += intercept;
 
-      double score = 1.0/(1.0 + exp(-x));
+//      double score = 1.0/(1.0 + exp(-x));
 //      printf("%f\n",score);
+
+      double score = maxsd[idx];
 
       if (score > best_candidate.score)
         best_candidate = Best{var_id,val,score};
@@ -555,19 +580,19 @@ public:
       #endif
     }
 
-    #ifdef SQL
-    // TODO: Mettre un flag qui fait ça ou non ici...
-    for (auto prop : logDensity) {
-      unsigned int prop_id = prop.first;
-      double slnCnt = logProp[prop_id].second;
-      size_t nb_records = prop.second.first;
-      Record *records = prop.second.second;
-      for (unsigned int i=0; i<nb_records; ++i) {
-        Record *r = &records[i];
-        CBSDB::insert_varval_density(prop_id, r->var_id, r->val, r->density);
-      }
-    }
-    #endif
+//    #ifdef SQL
+//    // TODO: Mettre un flag qui fait ça ou non ici...
+//    for (auto prop : logDensity) {
+//      unsigned int prop_id = prop.first;
+//      double slnCnt = logProp[prop_id].second;
+//      size_t nb_records = prop.second.first;
+//      Record *records = prop.second.second;
+//      for (unsigned int i=0; i<nb_records; ++i) {
+//        Record *r = &records[i];
+//        CBSDB::insert_varval_density(prop_id, r->var_id, r->val, r->density);
+//      }
+//    }
+//    #endif
 
     // We find the choice.
     Candidate c = heur.getChoice(home);

@@ -123,7 +123,7 @@ public:
                                        CBSDB::FULL, 10000, branching_name,
                                        "base",
                                        "/media/sam/hdd3tb/cbs-scripts"
-                                         "/bd/gecode_5/cbs.db");
+                                         "/bd/bd_new_features/cbs.db");
 
       // In case there's no more propagators with include instrumentation
       //TODO: Mettre quelque chose de plus "defaut"
