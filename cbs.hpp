@@ -336,24 +336,26 @@ public:
   }
 };
 
+
+const size_t SIZE = 30*30*30;
+
 template<class View>
 class ai : public BranchingHeuristic<View> {
   USING_BH
 protected:
-  static const size_t SIZE = 30*30*30;
-  double sum_dens[SIZE];
-  int nb_prop[SIZE];
-  int var_dom_size[SIZE];
+  static double sum_dens[SIZE];
+  static int nb_prop[SIZE];
+  static int var_dom_size[SIZE];
 
-  double sum_slnCnt_x_dens[SIZE];
-  double sum_slnCnt[SIZE];
+  static double sum_slnCnt_x_dens[SIZE];
+  static double sum_slnCnt[SIZE];
 
-  double maxsd[SIZE];
-  double aAvgSD[SIZE];
-  double maxRelSD[SIZE];
-  double maxRelRatio[SIZE];
-  double wSCAvg[SIZE];
-  double wAntiSCAvg[SIZE];
+  static double maxsd[SIZE];
+  static double aAvgSD[SIZE];
+  static double maxRelSD[SIZE];
+  static double maxRelRatio[SIZE];
+  static double wSCAvg[SIZE];
+//  double wAntiSCAvg[SIZE];
 public:
   virtual Candidate getChoice(Space& home) {
     size_t size = (size_t)(xD.size * xD.width);
@@ -370,7 +372,7 @@ public:
       maxRelSD[i] = 0;
       maxRelRatio[i] = 0;
       wSCAvg[i] = 0;
-      wAntiSCAvg[i] = 0;
+//      wAntiSCAvg[i] = 0;
     }
     /// CLEAR
 
@@ -399,12 +401,12 @@ public:
     });
 
 
-    for_every_log_entry([&](unsigned int prop_id, double slnCnt,
-                            unsigned int var_id, int val, double density) {
-      unsigned int idx = varvalpos(xD,var_id,val);
-      wAntiSCAvg[idx] += (sum_slnCnt[idx] - slnCnt) * density / sum_slnCnt[idx];
-
-    });
+//    for_every_log_entry([&](unsigned int prop_id, double slnCnt,
+//                            unsigned int var_id, int val, double density) {
+//      unsigned int idx = varvalpos(xD,var_id,val);
+//      wAntiSCAvg[idx] += (sum_slnCnt[idx] - slnCnt) * density / sum_slnCnt[idx];
+//
+//    });
 
     for (int i=0; i<size; i++) {
       aAvgSD[i] = sum_dens[i] / (double)nb_prop[i];
@@ -527,6 +529,21 @@ w_anti_sc_avg: 0.0689854263612
   }
 
 };
+
+template<class View> double ai<View>::sum_dens[SIZE]{};
+template<class View> int ai<View>::nb_prop[SIZE]{};
+template<class View> int ai<View>::var_dom_size[SIZE]{};
+
+template<class View> double ai<View>::sum_slnCnt_x_dens[SIZE]{};
+template<class View> double ai<View>::sum_slnCnt[SIZE]{};
+
+template<class View> double ai<View>::maxsd[SIZE]{};
+template<class View> double ai<View>::aAvgSD[SIZE]{};
+template<class View> double ai<View>::maxRelSD[SIZE]{};
+template<class View> double ai<View>::maxRelRatio[SIZE]{};
+template<class View> double ai<View>::wSCAvg[SIZE]{};
+
+
 
 template<class View, template<class> class BranchingHeur>
 class CBSBrancher : public Brancher {
