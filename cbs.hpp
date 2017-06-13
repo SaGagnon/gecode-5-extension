@@ -454,8 +454,8 @@ public:
                             unsigned int var_id, int val, double density) {
       unsigned int idx = varvalpos(xD,var_id,val);
       wAntiSCAvg[idx] += (sum_slnCnt[idx] - slnCnt) * density / sum_slnCnt[idx];
-      wAntiTAvg[idx] += prop_proj_tightness[prop_id] * density /
-        sum_ctrTightness[idx];
+      wAntiTAvg[idx] += (sum_ctrTightness[idx] - prop_proj_tightness[prop_id])
+                        * density / sum_ctrTightness[idx];
     });
 
     for_every_varIdx_val(home, [&](unsigned var_id, int val) {
