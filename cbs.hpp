@@ -440,21 +440,45 @@ max_rel_sd: 1.13974518276
 max_rel_ratio: 1.58679317119
 w_sc_avg: -1.07916450831
 w_anti_sc_avg: 0.156047430193
+
+
+     0.791875555142
+dens: -0.0699921041617
+log_sln_cnt: 0.00182990546277
+log_sum_sln_cnt: 0.00513130334559
+a_avg_sd: 6.48846386383
+var_dom_size: 0.0434293464834
+var_dens_entropy: 4.25510757658
+max_rel_sd: 1.75593492839
+max_rel_ratio: 1.32676874366
+w_sc_avg: -0.217421577686
+w_anti_sc_avg: 0.692417510727
+[-8.90397804]
+
+     0.792096780096
+dens: -0.00164478286389
+a_avg_sd: 6.72625741638
+max_rel_sd: 1.15123412091
+max_rel_ratio: 1.54469782645
+w_sc_avg: -0.931138054611
+w_anti_sc_avg: 0.319692188376
+[-4.48901366]
+
       *
       */
 
 
       double x = 0;
-      x += 0.049 * maxsd[idx];
-      x += 7.02 * aAvgSD[idx];
+//      x += -0.069 * maxsd[idx];
+      x += 6.73 * aAvgSD[idx];
 //      x += -0.09 * var_dom_size[idx];
 //      x += 1.53 * var_dens_entropy[var_idx];
-      x += 1.13 * maxRelSD[idx];
-      x += 1.59 * maxRelRatio[idx];
-      x += -1.08 * wSCAvg[idx];
-      x += 0.15 * wAntiSCAvg[idx];
+      x += 1.15 * maxRelSD[idx];
+      x += 1.54 * maxRelRatio[idx];
+      x += -0.93 * wSCAvg[idx];
+      x += 0.32 * wAntiSCAvg[idx];
 
-      double intercept = -6.15;
+      double intercept = -4.49;
       x += intercept;
 
       double score = 1.0/(1.0 + exp(-x));
