@@ -119,10 +119,12 @@ public:
       }
 
       // TODO: Mettre une option command line pour activer cette ligne ou non
+//      #ifdef SQL
 //      int ret = CBSDB::start_execution(
 //        "latinsquare", opt.size(), "Gecode", CBSDB::FULL, 10000, "maxSD",
 //                                       "base", "/media/sam/hdd3tb/cbs-scripts"
 //                                         "/bd/bd_new_features/cbs.db");
+//      #endif
 
       // In case there's no more propagators with include instrumentation
       //TODO: Mettre quelque chose de plus "defaut"
@@ -139,7 +141,9 @@ public:
   }
 
   ~LatinSquare() {
+    #ifdef SQL
     CBSDB::insert_if_solution(x);
+    #endif
   }
 
   /// Perform copying during cloning
@@ -196,7 +200,9 @@ main(int argc, char* argv[]) {
   }
 
   Script::run<LatinSquare,DFS,SizeOptions>(opt);
+  #ifdef SQL
   CBSDB::end_execution();
+  #endif
   return 0;
 }
 
