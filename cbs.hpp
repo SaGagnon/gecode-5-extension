@@ -9,7 +9,7 @@
 #include <functional>
 #include <map>
 
-#define SQL
+//#define SQL
 
 #ifdef SQL
 #include "sql-interface.hh"
@@ -339,24 +339,44 @@ public:
 template<class View>
 class ai : public BranchingHeuristic<View> {
   USING_BH
+protected:
+  static const size_t SIZE = 30*30*30;
+  double sum_dens[SIZE];
+  int nb_prop[SIZE];
+  int var_dom_size[SIZE];
+
+  double sum_slnCnt_x_dens[SIZE];
+  double sum_slnCnt[SIZE];
+
+  double maxsd[SIZE];
+  double aAvgSD[SIZE];
+  double maxRelSD[SIZE];
+  double maxRelRatio[SIZE];
+  double wSCAvg[SIZE];
+  double wAntiSCAvg[SIZE];
 public:
   virtual Candidate getChoice(Space& home) {
     size_t size = (size_t)(xD.size * xD.width);
-    auto sum_dens     = std::vector<double>(size, 0);
-    auto nb_prop      = std::vector<int>(size, 0);
-    auto var_dom_size = std::vector<int>(size,0);
 
-    auto sum_slnCnt_x_dens = std::vector<double>(size, 0);
-    auto sum_slnCnt        = std::vector<double>(size,0);
+    /// CLEAR
+    for (int i=0; i<SIZE; i++) {
+      sum_dens[i] = 0;
+      nb_prop[i] = 0;
+      var_dom_size[i] = 0;
+      sum_slnCnt_x_dens[i] = 0;
+      sum_slnCnt[i] = 0;
+      maxsd[i] = 0;
+      aAvgSD[i] = 0;
+      maxRelSD[i] = 0;
+      maxRelRatio[i] = 0;
+      wSCAvg[i] = 0;
+      wAntiSCAvg[i] = 0;
+    }
+    /// CLEAR
 
-    auto maxsd        = std::vector<double>(size, 0);
-    auto aAvgSD       = std::vector<double>(size);
-    auto maxRelSD     = std::vector<double>(size);
-    auto maxRelRatio  = std::vector<double>(size);
-    auto wSCAvg       = std::vector<double>(size);
-    auto wAntiSCAvg   = std::vector<double>(size,0);
 
-    std::map<std::pair<unsigned int, unsigned int>, double> var_dens_entropy;
+
+//    std::map<std::pair<unsigned int, unsigned int>, double> var_dens_entropy;
 
     /**
      * Computation
@@ -372,10 +392,10 @@ public:
       sum_slnCnt_x_dens[idx] += slnCnt * density;
       sum_slnCnt[idx] += slnCnt;
 
-      auto key = std::make_pair(prop_id, var_id);
-      if (var_dens_entropy.find(key) == var_dens_entropy.end())
-        var_dens_entropy[key] = 0;
-      var_dens_entropy[key] -= density*log(density) / log(var_dom_size[idx]);
+//      auto key = std::make_pair(prop_id, var_id);
+//      if (var_dens_entropy.find(key) == var_dens_entropy.end())
+//        var_dens_entropy[key] = 0;
+//      var_dens_entropy[key] -= density*log(density) / log(var_dom_size[idx]);
     });
 
 
