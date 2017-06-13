@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.7)
+cmake_minimum_required(VERSION 3.6)
 project(gecode-5.0.0-extension)
 
 # Path to custom Gecode with cbs support
