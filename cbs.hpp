@@ -408,12 +408,14 @@ public:
 //
 //    });
 
-    for (int i=0; i<size; i++) {
-      aAvgSD[i] = sum_dens[i] / (double)nb_prop[i];
-      maxRelSD[i] = maxsd[i] - (1.0/(double)var_dom_size[i]);
-      maxRelRatio[i] = maxsd[i] / (1.0/(double)var_dom_size[i]);
-      wSCAvg[i] = sum_slnCnt_x_dens[i] / sum_slnCnt[i];
-    }
+
+    for_every_varIdx_val(home, [&](unsigned var_id, int val) {
+      unsigned int idx = varvalpos(xD,var_id,val);
+      aAvgSD[idx] = sum_dens[idx] / (double)nb_prop[idx];
+      maxRelSD[idx] = maxsd[idx] - (1.0/(double)var_dom_size[idx]);
+      maxRelRatio[idx] = maxsd[idx] / (1.0/(double)var_dom_size[idx]);
+      wSCAvg[idx] = sum_slnCnt_x_dens[idx] / sum_slnCnt[idx];
+    });
 
     struct Best { int var_id; int val; double score;
     } best_candidate{-1,0,0};
@@ -514,10 +516,10 @@ w_anti_sc_avg: 0.0689854263612
       double intercept = -4.23;
       x += intercept;
 
-      double score = 1.0/(1.0 + exp(-x));
+//      double score = 1.0/(1.0 + exp(-x));
 //      printf("%f\n",score);
 
-//      double score = maxsd[idx];
+      double score = maxsd[idx];
 
       if (score > best_candidate.score)
         best_candidate = Best{var_id,val,score};
