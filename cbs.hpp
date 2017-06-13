@@ -464,21 +464,32 @@ w_sc_avg: -0.931138054611
 w_anti_sc_avg: 0.319692188376
 [-4.48901366]
 
+0.7892615732
+dens: 0.0114974433769
+a_avg_sd: 6.0161385656
+max_rel_sd: 2.15630817548
+max_rel_ratio: 1.34268581514
+w_sc_avg: -0.207661624058
+w_anti_sc_avg: 0.0689854263612
+[-4.23809139]
+
+
+
       *
       */
 
 
       double x = 0;
 //      x += -0.069 * maxsd[idx];
-      x += 6.73 * aAvgSD[idx];
+      x += 6.01 * aAvgSD[idx];
 //      x += -0.09 * var_dom_size[idx];
 //      x += 1.53 * var_dens_entropy[var_idx];
-      x += 1.15 * maxRelSD[idx];
-      x += 1.54 * maxRelRatio[idx];
-      x += -0.93 * wSCAvg[idx];
-      x += 0.32 * wAntiSCAvg[idx];
+      x += 2.16 * maxRelSD[idx];
+      x += 1.34 * maxRelRatio[idx];
+      x += -0.20 * wSCAvg[idx];
+//      x += 0.32 * wAntiSCAvg[idx];
 
-      double intercept = -4.49;
+      double intercept = -4.23;
       x += intercept;
 
       double score = 1.0/(1.0 + exp(-x));
