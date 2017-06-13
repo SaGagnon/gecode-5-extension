@@ -111,12 +111,12 @@ namespace CBSDB {
   int insert_varval_density(unsigned int prop_id, unsigned int var_id,
                             int val, double dens);
 
-
   int insert_varval_density_features(
     unsigned int prop_id, unsigned int var_id, int val, double dens,
     double sln_cnt, double sum_sln_cnt, double a_avg_sd, double var_dom_size,
     double var_dens_entropy, double max_rel_sd, double max_rel_ratio,
-    double w_sc_avg, double w_anti_sc_avg);
+    double w_sc_avg, double w_anti_sc_avg, double w_t_avg, double w_anti_t_avg,
+    double w_d_avg);
 
   /**
    * Create a new solution linked to the current execution.

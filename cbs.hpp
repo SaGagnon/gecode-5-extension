@@ -10,7 +10,7 @@
 #include <map>
 #include <unordered_map>
 
-//#define SQL
+#define SQL
 
 #ifdef SQL
 #include "sql-interface.hh"
@@ -488,7 +488,8 @@ public:
           prop_id, r->var_id, r->val, r->density, slnCnt, sum_slnCnt[idx],
           aAvgSD[idx], var_dom_size[idx],
           var_dens_entropy[std::make_pair(prop_id, r->var_id)], maxRelSD[idx],
-          maxRelRatio[idx], wSCAvg[idx], wAntiSCAvg[idx]);
+          maxRelRatio[idx], wSCAvg[idx], wAntiSCAvg[idx], wTAvg[idx],
+          wAntiTAvg[idx], wDAvg[idx]);
       }
     }
     #endif
@@ -513,10 +514,10 @@ public:
       double intercept = -4.48;
       x += intercept;
 
-      double score = 1.0/(1.0 + exp(-x));
+//      double score = 1.0/(1.0 + exp(-x));
 //      printf("%f\n",score);
 
-//      double score = maxsd[idx];
+      double score = maxsd[idx];
 
       if (score > best_candidate.score)
         best_candidate = Best{var_id,val,score};
@@ -549,6 +550,9 @@ template<class View> double ai<View>::sum_ctrTightness[SIZE]{};
 template<class View> double ai<View>::wTAvg[SIZE]{};
 template<class View> double ai<View>::wAntiTAvg[SIZE]{};
 
+template<class View> double ai<View>::sum_prop_card_prod_x_density[SIZE]{};
+template<class View> double ai<View>::sum_prop_card_prod[SIZE]{};
+template<class View> double ai<View>::wDAvg[SIZE]{};
 
 
 template<class View, template<class> class BranchingHeur>
