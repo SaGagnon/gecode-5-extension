@@ -423,23 +423,44 @@ public:
       unsigned int idx = varvalpos(xD,var_id,val);
       unsigned int var_idx = varpos(xD,var_id);
 
-//      double x = 0;
-//      x += -7.71 * maxsd[idx];
-//      x += 12.17 * aAvgSD[idx];
+     /**
+      *0.792594120406
+dens: 0.0035344059046
+a_avg_sd: 6.63151763424
+max_rel_sd: 1.1492507272
+max_rel_ratio: 1.53616861529
+w_sc_avg: -0.880142053587
+w_anti_sc_avg: 0.356147116507
+      *
+      *
+      * 0.784641665475
+dens: 0.049542533099
+a_avg_sd: 7.02660806907
+max_rel_sd: 1.13974518276
+max_rel_ratio: 1.58679317119
+w_sc_avg: -1.07916450831
+w_anti_sc_avg: 0.156047430193
+      *
+      */
+
+
+      double x = 0;
+      x += 0.049 * maxsd[idx];
+      x += 7.02 * aAvgSD[idx];
 //      x += -0.09 * var_dom_size[idx];
 //      x += 1.53 * var_dens_entropy[var_idx];
-//      x += 7.94 * maxRelSD[idx];
-//      x += 0.92 * maxRelRatio[idx];
-//      x += -3.91 * wSCAvg[idx];
-//      x += -3.86 * wAntiSCAvg[idx];
+      x += 1.13 * maxRelSD[idx];
+      x += 1.59 * maxRelRatio[idx];
+      x += -1.08 * wSCAvg[idx];
+      x += 0.15 * wAntiSCAvg[idx];
 
-//      double intercept = -2.33;
-//      x += intercept;
+      double intercept = -6.15;
+      x += intercept;
 
-//      double score = 1.0/(1.0 + exp(-x));
+      double score = 1.0/(1.0 + exp(-x));
 //      printf("%f\n",score);
 
-      double score = maxsd[idx];
+//      double score = maxsd[idx];
 
       if (score > best_candidate.score)
         best_candidate = Best{var_id,val,score};

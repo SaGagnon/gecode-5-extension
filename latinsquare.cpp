@@ -119,11 +119,10 @@ public:
       }
 
       // TODO: Mettre une option command line pour activer cette ligne ou non
-      int ret = CBSDB::start_execution("latinsquare", opt.size(), "Gecode",
-                                       CBSDB::FULL, 10000, branching_name,
-                                       "base",
-                                       "/media/sam/hdd3tb/cbs-scripts"
-                                         "/bd/bd_new_features/cbs.db");
+//      int ret = CBSDB::start_execution(
+//        "latinsquare", opt.size(), "Gecode", CBSDB::FULL, 10000, "maxSD",
+//                                       "base", "/media/sam/hdd3tb/cbs-scripts"
+//                                         "/bd/bd_new_features/cbs.db");
 
       // In case there's no more propagators with include instrumentation
       //TODO: Mettre quelque chose de plus "defaut"
