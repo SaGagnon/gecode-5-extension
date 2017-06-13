@@ -8,6 +8,7 @@
 #include <tuple>
 #include <functional>
 #include <map>
+#include <unordered_map>
 
 //#define SQL
 
@@ -349,6 +350,7 @@ protected:
 
   static double sum_slnCnt_x_dens[SIZE];
   static double sum_slnCnt[SIZE];
+  static double slnCnt[SIZE];
 
   static double maxsd[SIZE];
   static double aAvgSD[SIZE];
@@ -356,6 +358,15 @@ protected:
   static double maxRelRatio[SIZE];
   static double wSCAvg[SIZE];
   static double wAntiSCAvg[SIZE];
+
+  static double ctrTightness_x_dens[SIZE];
+  static double sum_ctrTightness[SIZE];
+  static double wTAvg[SIZE];
+  static double wAntiTAvg[SIZE];
+
+  static double sum_prop_card_prod_x_density[SIZE];
+  static double sum_prop_card_prod[SIZE];
+  static double wDAvg[SIZE];
 public:
   virtual Candidate getChoice(Space& home) {
     size_t size = (size_t)(xD.size * xD.width);
@@ -367,12 +378,19 @@ public:
       var_dom_size[i] = 0;
       sum_slnCnt_x_dens[i] = 0;
       sum_slnCnt[i] = 0;
+      slnCnt[i] = 0;
       maxsd[i] = 0;
       aAvgSD[i] = 0;
       maxRelSD[i] = 0;
       maxRelRatio[i] = 0;
       wSCAvg[i] = 0;
       wAntiSCAvg[i] = 0;
+      wTAvg[i] = 0;
+      wAntiTAvg[i] = 0;
+
+      sum_prop_card_prod_x_density[i] = 0;
+      sum_prop_card_prod[i] = 0;
+      wDAvg[i] = 0;
     }
     /// CLEAR
 
@@ -380,9 +398,34 @@ public:
 
     std::map<std::pair<unsigned int, unsigned int>, double> var_dens_entropy;
 
+    std::unordered_map<unsigned int, double> prop_card_prod;
+    std::unordered_map<unsigned int, double> prop_proj_tightness;
+
     /**
      * Computation
      */
+
+    // Product of domain of every variables in each proapgators
+    for (int i=0; i<x.size(); i++) {
+      for (SubscribedPropagators sp(x[i]); sp(); ++sp) {
+        if (sp.propagator().cbs(home, NULL)) {
+          unsigned int prop_id = sp.propagator().id();
+          if (prop_card_prod.find(prop_id) == prop_card_prod.end())
+            prop_card_prod[prop_id] = 1;
+          prop_card_prod[prop_id] *= x[i].size();
+        }
+      }
+    }
+
+    // Tightness of each propagator
+    for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
+      if (p.propagator().cbs(home, NULL)) {
+        unsigned int prop_id = p.propagator().id();
+        double slnCnt = (*logProp)[prop_id].second;
+        prop_proj_tightness[prop_id] = slnCnt / prop_card_prod[prop_id];
+      }
+    }
+
     for_every_log_entry([&](unsigned int prop_id, double slnCnt,
                             unsigned int var_id, int val, double density) {
       unsigned int idx = varvalpos(xD,var_id,val);
@@ -398,6 +441,12 @@ public:
       if (var_dens_entropy.find(key) == var_dens_entropy.end())
         var_dens_entropy[key] = 0;
       var_dens_entropy[key] -= density*log(density) / log(var_dom_size[idx]);
+
+      ctrTightness_x_dens[idx] = prop_proj_tightness[idx] * density;
+      sum_ctrTightness[idx] += prop_proj_tightness[idx];
+
+      sum_prop_card_prod_x_density[idx] += prop_card_prod[idx] * density;
+      sum_prop_card_prod[idx] += prop_card_prod[idx];
     });
 
 
@@ -405,9 +454,9 @@ public:
                             unsigned int var_id, int val, double density) {
       unsigned int idx = varvalpos(xD,var_id,val);
       wAntiSCAvg[idx] += (sum_slnCnt[idx] - slnCnt) * density / sum_slnCnt[idx];
-
+      wAntiTAvg[idx] += prop_proj_tightness[prop_id] * density /
+        sum_ctrTightness[idx];
     });
-
 
     for_every_varIdx_val(home, [&](unsigned var_id, int val) {
       unsigned int idx = varvalpos(xD,var_id,val);
@@ -415,6 +464,8 @@ public:
       maxRelSD[idx] = maxsd[idx] - (1.0/(double)var_dom_size[idx]);
       maxRelRatio[idx] = maxsd[idx] / (1.0/(double)var_dom_size[idx]);
       wSCAvg[idx] = sum_slnCnt_x_dens[idx] / sum_slnCnt[idx];
+      wTAvg[idx] = ctrTightness_x_dens[idx] / sum_ctrTightness[idx];
+      wDAvg[idx] = sum_prop_card_prod_x_density[idx] / sum_prop_card_prod[idx];
     });
 
     struct Best { int var_id; int val; double score;
@@ -447,60 +498,6 @@ public:
       unsigned int idx = varvalpos(xD,var_id,val);
       unsigned int var_idx = varpos(xD,var_id);
 
-     /**
-      *0.792594120406
-dens: 0.0035344059046
-a_avg_sd: 6.63151763424
-max_rel_sd: 1.1492507272
-max_rel_ratio: 1.53616861529
-w_sc_avg: -0.880142053587
-w_anti_sc_avg: 0.356147116507
-      *
-      *
-      * 0.784641665475
-dens: 0.049542533099
-a_avg_sd: 7.02660806907
-max_rel_sd: 1.13974518276
-max_rel_ratio: 1.58679317119
-w_sc_avg: -1.07916450831
-w_anti_sc_avg: 0.156047430193
-
-
-     0.791875555142
-dens: -0.0699921041617
-log_sln_cnt: 0.00182990546277
-log_sum_sln_cnt: 0.00513130334559
-a_avg_sd: 6.48846386383
-var_dom_size: 0.0434293464834
-var_dens_entropy: 4.25510757658
-max_rel_sd: 1.75593492839
-max_rel_ratio: 1.32676874366
-w_sc_avg: -0.217421577686
-w_anti_sc_avg: 0.692417510727
-[-8.90397804]
-
-     0.792096780096
-dens: -0.00164478286389
-a_avg_sd: 6.72625741638
-max_rel_sd: 1.15123412091
-max_rel_ratio: 1.54469782645
-w_sc_avg: -0.931138054611
-w_anti_sc_avg: 0.319692188376
-[-4.48901366]
-
-0.7892615732
-dens: 0.0114974433769
-a_avg_sd: 6.0161385656
-max_rel_sd: 2.15630817548
-max_rel_ratio: 1.34268581514
-w_sc_avg: -0.207661624058
-w_anti_sc_avg: 0.0689854263612
-[-4.23809139]
-
-
-
-      *
-      */
 
 
       double x = 0;
@@ -538,6 +535,7 @@ template<class View> int ai<View>::var_dom_size[SIZE]{};
 
 template<class View> double ai<View>::sum_slnCnt_x_dens[SIZE]{};
 template<class View> double ai<View>::sum_slnCnt[SIZE]{};
+template<class View> double ai<View>::slnCnt[SIZE]{};
 
 template<class View> double ai<View>::maxsd[SIZE]{};
 template<class View> double ai<View>::aAvgSD[SIZE]{};
@@ -545,6 +543,11 @@ template<class View> double ai<View>::maxRelSD[SIZE]{};
 template<class View> double ai<View>::maxRelRatio[SIZE]{};
 template<class View> double ai<View>::wSCAvg[SIZE]{};
 template<class View> double ai<View>::wAntiSCAvg[SIZE]{};
+
+template<class View> double ai<View>::ctrTightness_x_dens[SIZE]{};
+template<class View> double ai<View>::sum_ctrTightness[SIZE]{};
+template<class View> double ai<View>::wTAvg[SIZE]{};
+template<class View> double ai<View>::wAntiTAvg[SIZE]{};
 
 
 
