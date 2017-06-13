@@ -355,7 +355,7 @@ protected:
   static double maxRelSD[SIZE];
   static double maxRelRatio[SIZE];
   static double wSCAvg[SIZE];
-//  double wAntiSCAvg[SIZE];
+  static double wAntiSCAvg[SIZE];
 public:
   virtual Candidate getChoice(Space& home) {
     size_t size = (size_t)(xD.size * xD.width);
@@ -372,13 +372,13 @@ public:
       maxRelSD[i] = 0;
       maxRelRatio[i] = 0;
       wSCAvg[i] = 0;
-//      wAntiSCAvg[i] = 0;
+      wAntiSCAvg[i] = 0;
     }
     /// CLEAR
 
 
 
-//    std::map<std::pair<unsigned int, unsigned int>, double> var_dens_entropy;
+    std::map<std::pair<unsigned int, unsigned int>, double> var_dens_entropy;
 
     /**
      * Computation
@@ -394,19 +394,19 @@ public:
       sum_slnCnt_x_dens[idx] += slnCnt * density;
       sum_slnCnt[idx] += slnCnt;
 
-//      auto key = std::make_pair(prop_id, var_id);
-//      if (var_dens_entropy.find(key) == var_dens_entropy.end())
-//        var_dens_entropy[key] = 0;
-//      var_dens_entropy[key] -= density*log(density) / log(var_dom_size[idx]);
+      auto key = std::make_pair(prop_id, var_id);
+      if (var_dens_entropy.find(key) == var_dens_entropy.end())
+        var_dens_entropy[key] = 0;
+      var_dens_entropy[key] -= density*log(density) / log(var_dom_size[idx]);
     });
 
 
-//    for_every_log_entry([&](unsigned int prop_id, double slnCnt,
-//                            unsigned int var_id, int val, double density) {
-//      unsigned int idx = varvalpos(xD,var_id,val);
-//      wAntiSCAvg[idx] += (sum_slnCnt[idx] - slnCnt) * density / sum_slnCnt[idx];
-//
-//    });
+    for_every_log_entry([&](unsigned int prop_id, double slnCnt,
+                            unsigned int var_id, int val, double density) {
+      unsigned int idx = varvalpos(xD,var_id,val);
+      wAntiSCAvg[idx] += (sum_slnCnt[idx] - slnCnt) * density / sum_slnCnt[idx];
+
+    });
 
 
     for_every_varIdx_val(home, [&](unsigned var_id, int val) {
@@ -508,18 +508,18 @@ w_anti_sc_avg: 0.0689854263612
       x += 6.01 * aAvgSD[idx];
 //      x += -0.09 * var_dom_size[idx];
 //      x += 1.53 * var_dens_entropy[var_idx];
-      x += 2.16 * maxRelSD[idx];
-      x += 1.34 * maxRelRatio[idx];
-      x += -0.20 * wSCAvg[idx];
-//      x += 0.32 * wAntiSCAvg[idx];
+      x += 1.15 * maxRelSD[idx];
+      x += 1.54 * maxRelRatio[idx];
+      x += -0.93 * wSCAvg[idx];
+      x += 0.32 * wAntiSCAvg[idx];
 
-      double intercept = -4.23;
+      double intercept = -4.48;
       x += intercept;
 
-//      double score = 1.0/(1.0 + exp(-x));
+      double score = 1.0/(1.0 + exp(-x));
 //      printf("%f\n",score);
 
-      double score = maxsd[idx];
+//      double score = maxsd[idx];
 
       if (score > best_candidate.score)
         best_candidate = Best{var_id,val,score};
@@ -544,6 +544,7 @@ template<class View> double ai<View>::aAvgSD[SIZE]{};
 template<class View> double ai<View>::maxRelSD[SIZE]{};
 template<class View> double ai<View>::maxRelRatio[SIZE]{};
 template<class View> double ai<View>::wSCAvg[SIZE]{};
+template<class View> double ai<View>::wAntiSCAvg[SIZE]{};
 
 
 
