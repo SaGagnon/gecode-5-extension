@@ -388,6 +388,9 @@ public:
       wTAvg[i] = 0;
       wAntiTAvg[i] = 0;
 
+      ctrTightness_x_dens[i] = 0;
+      sum_ctrTightness[i] = 0;
+
       sum_prop_card_prod_x_density[i] = 0;
       sum_prop_card_prod[i] = 0;
       wDAvg[i] = 0;
@@ -495,24 +498,62 @@ public:
     #endif
 
 
+//    for (auto prop : (*logDensity)) {
+//      unsigned int prop_id = prop.first;
+//      double slnCnt = (*logProp)[prop_id].second;
+//      size_t nb_records = prop.second.first;
+//      Record *records = prop.second.second;
+//      for (unsigned int i=0; i<nb_records; ++i) {
+//        Record *r = &records[i];
+//        unsigned int idx = varvalpos(xD,r->var_id,r->val);
+//        unsigned int var_id = varpos(xD,r->var_id);
+//        int val = r->val;
+//
+//        double x = 0;
+//        x += 0.189388381864 * maxsd[idx];
+//        x += 6.1533440685 * aAvgSD[idx];
+//        x += 0.0366048523955 * var_dom_size[idx];
+//        x += 4.09477607086 * var_dens_entropy[std::make_pair(prop_id,var_id)];
+//        x += 2.29259310496 * maxRelSD[idx];
+//        x += 1.26064249745 * maxRelRatio[idx];
+//        x += 0.889269019281 * wSCAvg[idx];
+//        x += 0.312683050214 * wAntiSCAvg[idx];
+//        x += 0.242750575261 * wTAvg[idx];
+//        x += 0.06222969203 * wAntiTAvg[idx];
+//        x += -1.11005695421 * wDAvg[idx];
+//
+//        double intercept = -8.50514329;
+//        x += intercept;
+//
+//        double score = 1.0/(1.0 + exp(-x));
+//
+//        if (score > best_candidate.score)
+//          best_candidate = Best{var_id,val,score};
+//      }
+//    }
+
+
     for_every_varIdx_val(home, [&](unsigned var_id, int val) {
       unsigned int idx = varvalpos(xD,var_id,val);
       unsigned int var_idx = varpos(xD,var_id);
 
+//      0.790347429025
+//      dens: 0.00692986720185
+//      a_avg_sd: 5.12728647027
+//      max_rel_sd: 8.52939316547
+//      [-2.72276799]
+//      double x = 0;
+//      x += 0.189388381864 * maxsd[idx];
+//      x += 6.1533440685 * aAvgSD[idx];
+//      x += 0.0366048523955 * var_dom_size[idx];
+//      x += 4.09477607086 * var_dens_entropy[std::make_pair(prop_id,var_id)];
+//      x += 2.29259310496 * maxRelSD[idx];
+//      x += 1.26064249745 * maxRelRatio[idx];
+//      x += -0.93 * wSCAvg[idx];
+//      x += 0.32 * wAntiSCAvg[idx];
 
-
-      double x = 0;
-//      x += -0.069 * maxsd[idx];
-      x += 6.01 * aAvgSD[idx];
-//      x += -0.09 * var_dom_size[idx];
-//      x += 1.53 * var_dens_entropy[var_idx];
-      x += 1.15 * maxRelSD[idx];
-      x += 1.54 * maxRelRatio[idx];
-      x += -0.93 * wSCAvg[idx];
-      x += 0.32 * wAntiSCAvg[idx];
-
-      double intercept = -4.48;
-      x += intercept;
+//      double intercept = -2.72;
+//      x += intercept;
 
 //      double score = 1.0/(1.0 + exp(-x));
 //      printf("%f\n",score);
