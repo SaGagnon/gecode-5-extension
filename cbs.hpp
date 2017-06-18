@@ -10,7 +10,7 @@
 #include <map>
 #include <unordered_map>
 
-#define SQL
+//#define SQL
 
 #ifdef SQL
 #include "sql-interface.hh"
@@ -511,24 +511,26 @@ public:
 
 
         // cbs_max_sd, 0-20, ECH10, reglog_full
-        double x = 0;
-        x += 0.222850436077 * maxsd[idx];
-        x += 4.60691374795 * aAvgSD[idx];
-        x += 0.0368418587122 * var_dom_size[idx];
-        x += 4.2498849779 *
-          var_dens_entropy[std::make_pair(prop_id,r->var_id)];
-        x += 2.29865995159 * maxRelSD[idx];
-        x += 1.26150264369 * maxRelRatio[idx];
-        x += 1.76381743389 * wSCAvg[idx];
-        x += 1.26487771943 * wAntiSCAvg[idx];
-        x += 0.0337647421938 * wTAvg[idx];
-        x += -0.877825562551 * wAntiTAvg[idx];
-        x += -0.430734215691 * wDAvg[idx];
+//        double x = 0;
+//        x += 0.222850436077 * maxsd[idx];
+//        x += 4.60691374795 * aAvgSD[idx];
+//        x += 0.0368418587122 * var_dom_size[idx];
+//        x += 4.2498849779 *
+//          var_dens_entropy[std::make_pair(prop_id,r->var_id)];
+//        x += 2.29865995159 * maxRelSD[idx];
+//        x += 1.26150264369 * maxRelRatio[idx];
+//        x += 1.76381743389 * wSCAvg[idx];
+//        x += 1.26487771943 * wAntiSCAvg[idx];
+//        x += 0.0337647421938 * wTAvg[idx];
+//        x += -0.877825562551 * wAntiTAvg[idx];
+//        x += -0.430734215691 * wDAvg[idx];
+//
+//        double intercept = -8.65939782;
+//        x += intercept;
+//
+//        double score = 1.0/(1.0 + exp(-x));
 
-        double intercept = -8.65939782;
-        x += intercept;
-
-        double score = 1.0/(1.0 + exp(-x));
+        double score = maxsd[idx];
 
         if (score > best_candidate.score)
           best_candidate = Best{r->var_id, r->val, score};

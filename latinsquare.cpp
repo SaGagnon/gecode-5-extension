@@ -121,7 +121,7 @@ public:
       // TODO: Mettre une option command line pour activer cette ligne ou non
       #ifdef SQL
       int ret = CBSDB::start_execution(
-        "latinsquare", opt.size(), "Gecode", CBSDB::ECH10, 10000, "maxSD",
+        "latinsquare", opt.size(), "Gecode", CBSDB::FULL, 10000, "maxSD",
                                        "base", "/media/sam/hdd3tb/cbs-scripts"
                                          "/bd/bd_wdavg/cbs.db");
       #endif
