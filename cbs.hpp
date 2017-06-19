@@ -504,11 +504,18 @@ public:
       double slnCnt = (*logProp)[prop_id].second;
       size_t nb_records = prop.second.first;
       Record *records = prop.second.second;
+
+      struct _Best{ unsigned int var_id; int val; double density;
+      } best_varval_in_prop{0,0,0};
+
       for (unsigned int i=0; i<nb_records; ++i) {
         Record *r = &records[i];
         unsigned int idx = varvalpos(xD,r->var_id,r->val);
-        unsigned int var_idx = varpos(xD,r->var_id);
+//        unsigned int var_idx = varpos(xD,r->var_id);
 
+        if (maxsd[idx] > best_varval_in_prop.density) {
+          best_varval_in_prop = _Best{r->var_id, r->val, maxsd[idx]};
+        }
 
         // cbs_max_sd, 0-20, ECH10, reglog_full
 //        double x = 0;
@@ -530,46 +537,41 @@ public:
 //
 //        double score = 1.0/(1.0 + exp(-x));
 
-        double score = maxsd[idx];
-
-        if (score > best_candidate.score)
-          best_candidate = Best{r->var_id, r->val, score};
       }
+
+
+      unsigned int idx = varvalpos(xD,best_varval_in_prop.var_id,
+                                   best_varval_in_prop.val);
+      unsigned int var_idx = varpos(xD,best_varval_in_prop.var_id);
+
+//        double x = 0;
+//        x += 0.222850436077 * maxsd[idx];
+//        x += 4.60691374795 * aAvgSD[idx];
+//        x += 0.0368418587122 * var_dom_size[idx];
+//        x += 4.2498849779 *
+//          var_dens_entropy[std::make_pair(prop_id,r->var_id)];
+//        x += 2.29865995159 * maxRelSD[idx];
+//        x += 1.26150264369 * maxRelRatio[idx];
+//        x += 1.76381743389 * wSCAvg[idx];
+//        x += 1.26487771943 * wAntiSCAvg[idx];
+//        x += 0.0337647421938 * wTAvg[idx];
+//        x += -0.877825562551 * wAntiTAvg[idx];
+//        x += -0.430734215691 * wDAvg[idx];
+//
+//        double intercept = -8.65939782;
+//        x += intercept;
+//
+//        double score = 1.0/(1.0 + exp(-x));
+
+      double score = maxsd[idx];
+
+
+      if (score > best_candidate.score)
+        best_candidate = Best{best_varval_in_prop.var_id,
+                              best_varval_in_prop.val, score};
+
     }
 
-
-//    for_every_varIdx_val(home, [&](unsigned var_id, int val) {
-//      unsigned int idx = varvalpos(xD,var_id,val);
-//      unsigned int var_idx = varpos(xD,var_id);
-//
-////      0.790347429025
-////      dens: 0.00692986720185
-////      a_avg_sd: 5.12728647027
-////      max_rel_sd: 8.52939316547
-////      [-2.72276799]
-////      double x = 0;
-////      x += 0.189388381864 * maxsd[idx];
-////      x += 6.1533440685 * aAvgSD[idx];
-////      x += 0.0366048523955 * var_dom_size[idx];
-////      x += 4.09477607086 * var_dens_entropy[std::make_pair(prop_id,var_id)];
-////      x += 2.29259310496 * maxRelSD[idx];
-////      x += 1.26064249745 * maxRelRatio[idx];
-////      x += -0.93 * wSCAvg[idx];
-////      x += 0.32 * wAntiSCAvg[idx];
-//
-////      double intercept = -2.72;
-////      x += intercept;
-//
-////      double score = 1.0/(1.0 + exp(-x));
-////      printf("%f\n",score);
-//
-//      double score = maxsd[idx];
-//
-//      if (score > best_candidate.score)
-//        best_candidate = Best{var_id,val,score};
-//    });
-
-//    printf("score=%f\n",best_candidate.score);
     assert(best_candidate.var_id != -1);
     return Candidate{xD.positions[best_candidate.var_id],best_candidate.val};
   }
