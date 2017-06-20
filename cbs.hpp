@@ -10,7 +10,20 @@
 #include <map>
 #include <unordered_map>
 
-//#define SQL
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+
+
+#include <fstream>
+#include <iostream>
+
+
+#define SQL
 
 #ifdef SQL
 #include "sql-interface.hh"
@@ -498,6 +511,12 @@ public:
     }
     #endif
 
+//    std::ofstream pIn("/home/sam/gecode-5.0.0-extension/pIn");
+//    std::ifstream pOut("/home/sam/gecode-5.0.0-extension/pOut");
+//    int pIn = open("/home/sam/gecode-5.0.0-extension/pIn", O_WRONLY);
+//    int pOut = open("/home/sam/gecode-5.0.0-extension/pOut", O_RDONLY);
+
+    int n = 0;
 
     for (auto prop : (*logDensity)) {
       unsigned int prop_id = prop.first;
@@ -513,70 +532,109 @@ public:
         unsigned int idx = varvalpos(xD,r->var_id,r->val);
 //        unsigned int var_idx = varpos(xD,r->var_id);
 
-        if (maxsd[idx] > best_varval_in_prop.density) {
-          best_varval_in_prop = _Best{r->var_id, r->val, maxsd[idx]};
+        if (aAvgSD[idx] > best_varval_in_prop.density) {
+          best_varval_in_prop = _Best{r->var_id, r->val, aAvgSD[idx]};
         }
-
-        // cbs_max_sd, 0-20, ECH10, reglog_full
-//        double x = 0;
-//        x += 0.222850436077 * maxsd[idx];
-//        x += 4.60691374795 * aAvgSD[idx];
-//        x += 0.0368418587122 * var_dom_size[idx];
-//        x += 4.2498849779 *
-//          var_dens_entropy[std::make_pair(prop_id,r->var_id)];
-//        x += 2.29865995159 * maxRelSD[idx];
-//        x += 1.26150264369 * maxRelRatio[idx];
-//        x += 1.76381743389 * wSCAvg[idx];
-//        x += 1.26487771943 * wAntiSCAvg[idx];
-//        x += 0.0337647421938 * wTAvg[idx];
-//        x += -0.877825562551 * wAntiTAvg[idx];
-//        x += -0.430734215691 * wDAvg[idx];
-//
-//        double intercept = -8.65939782;
-//        x += intercept;
-//
-//        double score = 1.0/(1.0 + exp(-x));
-
       }
 
 
+      auto *r = &best_varval_in_prop;
       unsigned int idx = varvalpos(xD,best_varval_in_prop.var_id,
                                    best_varval_in_prop.val);
       unsigned int var_idx = varpos(xD,best_varval_in_prop.var_id);
 
-//        double x = 0;
-//        x += 0.222850436077 * maxsd[idx];
-//        x += 4.60691374795 * aAvgSD[idx];
-//        x += 0.0368418587122 * var_dom_size[idx];
-//        x += 4.2498849779 *
-//          var_dens_entropy[std::make_pair(prop_id,r->var_id)];
-//        x += 2.29865995159 * maxRelSD[idx];
-//        x += 1.26150264369 * maxRelRatio[idx];
-//        x += 1.76381743389 * wSCAvg[idx];
-//        x += 1.26487771943 * wAntiSCAvg[idx];
-//        x += 0.0337647421938 * wTAvg[idx];
-//        x += -0.877825562551 * wAntiTAvg[idx];
-//        x += -0.430734215691 * wDAvg[idx];
+
+//      pIn << r->var_id << ' ' << r->val << ' ' << r->density << ' ' << log(slnCnt) << ' ' << log(sum_slnCnt[idx]) << ' '
+//         << aAvgSD[idx] << ' ' << var_dom_size[idx] << ' '
+//         << var_dens_entropy[std::make_pair(prop_id, r->var_id)] << ' '
+//         << maxRelSD[idx] << ' ' << maxRelRatio[idx] << ' ' << wSCAvg[idx]
+//         << ' ' << wAntiSCAvg[idx] << ' ' << wTAvg[idx] << ' ' << wAntiTAvg[idx]
+//         << ' ' << wDAvg[idx] << '\n';
+//      n++;
+//      pIn.flush();
+////
+//      unsigned int var_id; int val; double score;
+//      pOut >> var_id >> val >> score;
 //
-//        double intercept = -8.65939782;
-//        x += intercept;
+
+
+//      0.609304232391
+//      dens: -3.00421077228
+//      a_avg_sd: 9.12103677008
+//      var_dom_size: 0.361896643688
+//      var_dens_entropy: -1.6051484119
+//      max_rel_sd: 6.45117690309
+//      w_sc_avg: 4.07621210422
+//      w_anti_sc_avg: 1.6740236159
+//      w_anti_t_avg: -1.26491271957
+//      w_d_avg: -2.67958743498
+//    [-3.06496796]
+
+
+        double x = 0;
+        x += -3.00421077228 * maxsd[idx];
+        x +=9.12103677008 * aAvgSD[idx];
+        x += 0.361896643688 * var_dom_size[idx];
+        x += -1.6051484119 *
+          var_dens_entropy[std::make_pair(prop_id,r->var_id)];
+        x += 6.45117690309 * maxRelSD[idx];
+        x += 1.26150264369 * maxRelRatio[idx];
+        x += 4.07621210422 * wSCAvg[idx];
+        x += 1.6740236159* wAntiSCAvg[idx];
+//        x +=  * wTAvg[idx];
+        x +=  -1.26491271957 * wAntiTAvg[idx];
+        x +=  -2.67958743498 * wDAvg[idx];
+
+        double intercept = -3.06496796;
+        x += intercept;
+
+        double score = 1.0/(1.0 + exp(-x));
+
+
+//      double score = aAvgSD[idx];
+
+
+
+
 //
-//        double score = 1.0/(1.0 + exp(-x));
-
-      double score = maxsd[idx];
-
-
+//
       if (score > best_candidate.score)
         best_candidate = Best{best_varval_in_prop.var_id,
                               best_varval_in_prop.val, score};
-
     }
+//    pIn.close();
+//
+//    int var_id; int val; double score;
+//    for (int i=0; i<n; i++) {
+//      pOut >> var_id >> val >> score;
+//      if (score > best_candidate.score)
+//        best_candidate = Best{var_id, val, score};
+//    }
 
     assert(best_candidate.var_id != -1);
     return Candidate{xD.positions[best_candidate.var_id],best_candidate.val};
   }
 
 };
+
+//        double x = 0;
+//        x += 0.222850436077 * maxsd[idx];
+//        x += 4.60691374795 * aAvgSD[idx];
+//        x += 0.0368418587122 * var_dom_size[idx];
+//        x += 4.2498849779 *
+//          var_dens_entropy[std::make_pair(prop_id,r->var_id)];
+//        x += 2.29865995159 * maxRelSD[idx];
+//        x += 1.26150264369 * maxRelRatio[idx];
+//        x += 1.76381743389 * wSCAvg[idx];
+//        x += 1.26487771943 * wAntiSCAvg[idx];
+//        x += 0.0337647421938 * wTAvg[idx];
+//        x += -0.877825562551 * wAntiTAvg[idx];
+//        x += -0.430734215691 * wDAvg[idx];
+//
+//        double intercept = -8.65939782;
+//        x += intercept;
+//
+//        double score = 1.0/(1.0 + exp(-x));
 
 template<class View> double ai<View>::sum_dens[SIZE]{};
 template<class View> int ai<View>::nb_prop[SIZE]{};
@@ -839,5 +897,7 @@ void cbsbranch(Home home, const IntVarArgs& x, CBSBranchingHeuristic s) {
 void cbsbranch(Home home, const BoolVarArgs& x, CBSBranchingHeuristic s) {
   _cbsbranch<Int::BoolView,BoolVarArgs>(home,x,s);
 }
+
+
 
 #endif //__CBS_HPP__
