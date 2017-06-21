@@ -23,7 +23,7 @@
 #include <iostream>
 
 
-#define SQL
+//#define SQL
 
 #ifdef SQL
 #include "sql-interface.hh"
@@ -516,7 +516,7 @@ public:
 //    int pIn = open("/home/sam/gecode-5.0.0-extension/pIn", O_WRONLY);
 //    int pOut = open("/home/sam/gecode-5.0.0-extension/pOut", O_RDONLY);
 
-    int n = 0;
+//    int n = 0;
 
     for (auto prop : (*logDensity)) {
       unsigned int prop_id = prop.first;
@@ -524,16 +524,25 @@ public:
       size_t nb_records = prop.second.first;
       Record *records = prop.second.second;
 
-      struct _Best{ unsigned int var_id; int val; double density;
-      } best_varval_in_prop{0,0,0};
+      struct _Best{
+        unsigned int var_id;
+        int val;
+        double density;
+        double a_avg;
+      } best_varval_in_prop{0,0,0,0};
 
       for (unsigned int i=0; i<nb_records; ++i) {
         Record *r = &records[i];
         unsigned int idx = varvalpos(xD,r->var_id,r->val);
-//        unsigned int var_idx = varpos(xD,r->var_id);
 
-        if (aAvgSD[idx] > best_varval_in_prop.density) {
-          best_varval_in_prop = _Best{r->var_id, r->val, aAvgSD[idx]};
+        if (maxsd[idx] > best_varval_in_prop.density) {
+          best_varval_in_prop = _Best{r->var_id, r->val,
+                                      maxsd[idx], aAvgSD[idx]};
+        } else if (maxsd[idx] == best_varval_in_prop.density) {
+          if (aAvgSD[idx] > best_varval_in_prop.a_avg)
+            best_varval_in_prop = _Best{r->var_id, r->val,
+                                      maxsd[idx], aAvgSD[idx]};
+
         }
       }
 
@@ -544,17 +553,30 @@ public:
       unsigned int var_idx = varpos(xD,best_varval_in_prop.var_id);
 
 
-//      pIn << r->var_id << ' ' << r->val << ' ' << r->density << ' ' << log(slnCnt) << ' ' << log(sum_slnCnt[idx]) << ' '
-//         << aAvgSD[idx] << ' ' << var_dom_size[idx] << ' '
-//         << var_dens_entropy[std::make_pair(prop_id, r->var_id)] << ' '
-//         << maxRelSD[idx] << ' ' << maxRelRatio[idx] << ' ' << wSCAvg[idx]
-//         << ' ' << wAntiSCAvg[idx] << ' ' << wTAvg[idx] << ' ' << wAntiTAvg[idx]
-//         << ' ' << wDAvg[idx] << '\n';
-//      n++;
+//      pIn
+////          << log(slnCnt) << ' '
+//          << r->density << ' '
+////          << log(sum_slnCnt[idx]) << ' '
+//          << aAvgSD[idx] << ' '
+//          << var_dom_size[idx] << ' '
+//          << var_dens_entropy[std::make_pair(prop_id, r->var_id)] << ' '
+//          << maxRelSD[idx] << ' '
+//          << maxRelRatio[idx] << ' '
+//          << wSCAvg[idx] << ' '
+//          << wAntiSCAvg[idx]
+//          << ' '
+//          << wTAvg[idx] << ' '
+//          << wAntiTAvg[idx] << ' '
+//          << wDAvg[idx]
+//          << '\n';
+////      n++;
 //      pIn.flush();
-////
-//      unsigned int var_id; int val; double score;
-//      pOut >> var_id >> val >> score;
+////////
+//      double score;
+//      pOut >> score;
+
+//      assert(var_id == best_varval_in_prop.var_id);
+//      assert(val == best_varval_in_prop.val);
 //
 
 
@@ -563,32 +585,83 @@ public:
 //      a_avg_sd: 9.12103677008
 //      var_dom_size: 0.361896643688
 //      var_dens_entropy: -1.6051484119
-//      max_rel_sd: 6.45117690309
+//      max_rel_sd: 6.4511769030
 //      w_sc_avg: 4.07621210422
 //      w_anti_sc_avg: 1.6740236159
 //      w_anti_t_avg: -1.26491271957
 //      w_d_avg: -2.67958743498
 //    [-3.06496796]
 
+//      0.650316266858
+//      gain: 0.096074
+//      dens: -5.97991013118
+//      a_avg_sd: 11.1925538139
+//      var_dens_entropy: -2.07399050705
+//      max_rel_sd: 9.26832579801
+//      w_anti_sc_avg: 1.63636409894
+//      w_anti_t_avg: -0.425928915021
+//    [-1.01823085]
 
-        double x = 0;
-        x += -3.00421077228 * maxsd[idx];
-        x +=9.12103677008 * aAvgSD[idx];
-        x += 0.361896643688 * var_dom_size[idx];
-        x += -1.6051484119 *
-          var_dens_entropy[std::make_pair(prop_id,r->var_id)];
-        x += 6.45117690309 * maxRelSD[idx];
-        x += 1.26150264369 * maxRelRatio[idx];
-        x += 4.07621210422 * wSCAvg[idx];
-        x += 1.6740236159* wAntiSCAvg[idx];
-//        x +=  * wTAvg[idx];
-        x +=  -1.26491271957 * wAntiTAvg[idx];
-        x +=  -2.67958743498 * wDAvg[idx];
+//      a_avg_sd: 5.98167081373
+//      max_rel_sd: 8.91999493631
+//      w_anti_sc_avg: 1.2661950906
+//      [-3.56213728;]
 
-        double intercept = -3.06496796;
-        x += intercept;
+//      a_avg_sd: 6.11961212299
+//      max_rel_sd: 9.11715866325
+//      w_anti_sc_avg: 1.03221247078
+//    [-3.54383182]
 
-        double score = 1.0/(1.0 + exp(-x));
+
+//      dens: -2.88694746317
+//      a_avg_sd: 12.8509773032
+//      var_dom_size: 0.76343340031
+//      var_dens_entropy: -1.20699389609
+//      max_rel_sd: 10.8398010224
+//      max_rel_ratio: -1.80589509023
+//      w_sc_avg: -0.510543622246
+//      w_anti_sc_avg: 1.41551636426
+//    [-3.87111096]
+
+//      dens: -2.97775217914
+//      a_avg_sd: 13.1791873452
+//      var_dom_size: 0.701836584387
+//      var_dens_entropy: -2.15261214896
+//      max_rel_sd: 10.0855269932
+//      max_rel_ratio: -1.52546741315
+//      w_sc_avg: -0.842473370688
+//      w_anti_sc_avg: 1.15121069103
+//    [-2.90928363]
+
+//      dens: -5.99299210161
+//      a_avg_sd: 12.0404682686
+//      var_dens_entropy: -2.79911889681
+//      max_rel_sd: 9.43330920949
+//    [-0.20244717]
+
+//      gain: 0.093329
+//      a_avg_sd: 5.8682705044
+//      max_rel_sd: 8.19456151333
+//      w_anti_sc_avg: 1.20699964608
+//      [-3.45163225]
+
+      //      a_avg_sd: 5.98167081373
+//      max_rel_sd: 8.91999493631
+//      w_anti_sc_avg: 1.2661950906
+//      [-3.56213728;]
+
+
+        double _x = 0;
+        _x += -6.3838 * maxsd[idx];
+        _x += 12.3229 * aAvgSD[idx];
+        _x += -2.1330 * var_dens_entropy[std::make_pair(prop_id,r->var_id)];
+        _x += 9.9082 * maxRelSD[idx];
+        double intercept = -0.8339;
+        _x += intercept;
+
+
+        double score = 1.0/(1.0 + exp(-_x));
+
 
 
 //      double score = aAvgSD[idx];
@@ -598,12 +671,14 @@ public:
 
 //
 //
-      if (score > best_candidate.score)
+      if (score > best_candidate.score) {
+//        printf("%i %i %f\n", var_id, val, score);
         best_candidate = Best{best_varval_in_prop.var_id,
                               best_varval_in_prop.val, score};
+      }
     }
 //    pIn.close();
-//
+////
 //    int var_id; int val; double score;
 //    for (int i=0; i<n; i++) {
 //      pOut >> var_id >> val >> score;
