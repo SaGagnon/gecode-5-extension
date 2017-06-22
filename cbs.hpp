@@ -511,13 +511,6 @@ public:
     }
     #endif
 
-//    std::ofstream pIn("/home/sam/gecode-5.0.0-extension/pIn");
-//    std::ifstream pOut("/home/sam/gecode-5.0.0-extension/pOut");
-//    int pIn = open("/home/sam/gecode-5.0.0-extension/pIn", O_WRONLY);
-//    int pOut = open("/home/sam/gecode-5.0.0-extension/pOut", O_RDONLY);
-
-//    int n = 0;
-
     for (auto prop : (*logDensity)) {
       unsigned int prop_id = prop.first;
       double slnCnt = (*logProp)[prop_id].second;
@@ -546,154 +539,27 @@ public:
         }
       }
 
-
       auto *r = &best_varval_in_prop;
       unsigned int idx = varvalpos(xD,best_varval_in_prop.var_id,
                                    best_varval_in_prop.val);
       unsigned int var_idx = varpos(xD,best_varval_in_prop.var_id);
 
-
-//      pIn
-////          << log(slnCnt) << ' '
-//          << r->density << ' '
-////          << log(sum_slnCnt[idx]) << ' '
-//          << aAvgSD[idx] << ' '
-//          << var_dom_size[idx] << ' '
-//          << var_dens_entropy[std::make_pair(prop_id, r->var_id)] << ' '
-//          << maxRelSD[idx] << ' '
-//          << maxRelRatio[idx] << ' '
-//          << wSCAvg[idx] << ' '
-//          << wAntiSCAvg[idx]
-//          << ' '
-//          << wTAvg[idx] << ' '
-//          << wAntiTAvg[idx] << ' '
-//          << wDAvg[idx]
-//          << '\n';
-////      n++;
-//      pIn.flush();
-////////
-//      double score;
-//      pOut >> score;
-
-//      assert(var_id == best_varval_in_prop.var_id);
-//      assert(val == best_varval_in_prop.val);
-//
+      double _x = 0;
+      _x += -5.4669 * maxsd[idx];
+      _x += 11.6397 * aAvgSD[idx];
+      _x += -0.7173 * var_dens_entropy[std::make_pair(prop_id,r->var_id)];
+      _x += 9.5603 * maxRelSD[idx];
+      double intercept = -2.4036;
+      _x += intercept;
 
 
-//      0.609304232391
-//      dens: -3.00421077228
-//      a_avg_sd: 9.12103677008
-//      var_dom_size: 0.361896643688
-//      var_dens_entropy: -1.6051484119
-//      max_rel_sd: 6.4511769030
-//      w_sc_avg: 4.07621210422
-//      w_anti_sc_avg: 1.6740236159
-//      w_anti_t_avg: -1.26491271957
-//      w_d_avg: -2.67958743498
-//    [-3.06496796]
+      double score = 1.0/(1.0 + exp(-_x));
 
-//      0.650316266858
-//      gain: 0.096074
-//      dens: -5.97991013118
-//      a_avg_sd: 11.1925538139
-//      var_dens_entropy: -2.07399050705
-//      max_rel_sd: 9.26832579801
-//      w_anti_sc_avg: 1.63636409894
-//      w_anti_t_avg: -0.425928915021
-//    [-1.01823085]
-
-//      a_avg_sd: 5.98167081373
-//      max_rel_sd: 8.91999493631
-//      w_anti_sc_avg: 1.2661950906
-//      [-3.56213728;]
-
-//      a_avg_sd: 6.11961212299
-//      max_rel_sd: 9.11715866325
-//      w_anti_sc_avg: 1.03221247078
-//    [-3.54383182]
-
-
-//      dens: -2.88694746317
-//      a_avg_sd: 12.8509773032
-//      var_dom_size: 0.76343340031
-//      var_dens_entropy: -1.20699389609
-//      max_rel_sd: 10.8398010224
-//      max_rel_ratio: -1.80589509023
-//      w_sc_avg: -0.510543622246
-//      w_anti_sc_avg: 1.41551636426
-//    [-3.87111096]
-
-//      dens: -2.97775217914
-//      a_avg_sd: 13.1791873452
-//      var_dom_size: 0.701836584387
-//      var_dens_entropy: -2.15261214896
-//      max_rel_sd: 10.0855269932
-//      max_rel_ratio: -1.52546741315
-//      w_sc_avg: -0.842473370688
-//      w_anti_sc_avg: 1.15121069103
-//    [-2.90928363]
-
-//      dens: -5.99299210161
-//      a_avg_sd: 12.0404682686
-//      var_dens_entropy: -2.79911889681
-//      max_rel_sd: 9.43330920949
-//    [-0.20244717]
-
-//      gain: 0.093329
-//      a_avg_sd: 5.8682705044
-//      max_rel_sd: 8.19456151333
-//      w_anti_sc_avg: 1.20699964608
-//      [-3.45163225]
-
-      //      a_avg_sd: 5.98167081373
-//      max_rel_sd: 8.91999493631
-//      w_anti_sc_avg: 1.2661950906
-//      [-3.56213728;]
-
-
-      // First run
-//        double _x = 0;
-//        _x += -6.3838 * maxsd[idx];
-//        _x += 12.3229 * aAvgSD[idx];
-//        _x += -2.1330 * var_dens_entropy[std::make_pair(prop_id,r->var_id)];
-//        _x += 9.9082 * maxRelSD[idx];
-//        double intercept = -0.8339;
-//        _x += intercept;
-
-        double _x = 0;
-        _x += -5.4669 * maxsd[idx];
-        _x += 11.6397 * aAvgSD[idx];
-        _x += -0.7173 * var_dens_entropy[std::make_pair(prop_id,r->var_id)];
-        _x += 9.5603 * maxRelSD[idx];
-        double intercept = -2.4036;
-        _x += intercept;
-
-
-        double score = 1.0/(1.0 + exp(-_x));
-
-
-
-//      double score = aAvgSD[idx];
-
-
-
-
-//
-//
       if (score > best_candidate.score) {
-//        printf("%i %i %f\n", var_id, val, score);
         best_candidate = Best{best_varval_in_prop.var_id,
                               best_varval_in_prop.val, score};
       }
     }
-//    pIn.close();
-////
-//    int var_id; int val; double score;
-//    for (int i=0; i<n; i++) {
-//      pOut >> var_id >> val >> score;
-//      if (score > best_candidate.score)
-//        best_candidate = Best{var_id, val, score};
-//    }
 
     assert(best_candidate.var_id != -1);
     return Candidate{xD.positions[best_candidate.var_id],best_candidate.val};
