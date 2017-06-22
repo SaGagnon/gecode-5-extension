@@ -537,11 +537,11 @@ public:
 
         auto score_varval = [&]() {
           double _x = 0;
-          _x += -5.4669 * maxsd[idx];
-          _x += 11.6397 * aAvgSD[idx];
-          _x += -0.7173 * var_dens_entropy[std::make_pair(prop_id,r->var_id)];
-          _x += 9.5603 * maxRelSD[idx];
-          double intercept = -2.4036;
+          _x += -3.8414 * maxsd[idx];
+          _x += 9.2520 * aAvgSD[idx];
+          _x += -1.3993 * var_dens_entropy[std::make_pair(prop_id,r->var_id)];
+          _x += 7.5693 * maxRelSD[idx];
+          double intercept = -1.2911;
           _x += intercept;
 
           return 1.0/(1.0 + exp(-_x));
@@ -557,7 +557,8 @@ public:
         } else if (dens > best_dens*0.95) {
           double score = score_varval();
           if (score > best_varval_in_prop.score)
-            best_varval_in_prop = _Best{r->var_id, r->val, score_varval(), dens};
+            best_varval_in_prop = _Best{r->var_id, r->val, score_varval(),
+                                        best_dens};
           if (dens > best_dens)
             best_varval_in_prop.best_dens_seen = dens;
         }
