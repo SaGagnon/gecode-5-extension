@@ -651,12 +651,21 @@ public:
 //      [-3.56213728;]
 
 
+      // First run
+//        double _x = 0;
+//        _x += -6.3838 * maxsd[idx];
+//        _x += 12.3229 * aAvgSD[idx];
+//        _x += -2.1330 * var_dens_entropy[std::make_pair(prop_id,r->var_id)];
+//        _x += 9.9082 * maxRelSD[idx];
+//        double intercept = -0.8339;
+//        _x += intercept;
+
         double _x = 0;
-        _x += -6.3838 * maxsd[idx];
-        _x += 12.3229 * aAvgSD[idx];
-        _x += -2.1330 * var_dens_entropy[std::make_pair(prop_id,r->var_id)];
-        _x += 9.9082 * maxRelSD[idx];
-        double intercept = -0.8339;
+        _x += -5.4669 * maxsd[idx];
+        _x += 11.6397 * aAvgSD[idx];
+        _x += -0.7173 * var_dens_entropy[std::make_pair(prop_id,r->var_id)];
+        _x += 9.5603 * maxRelSD[idx];
+        double intercept = -2.4036;
         _x += intercept;
 
 
