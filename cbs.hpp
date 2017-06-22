@@ -511,53 +511,62 @@ public:
     }
     #endif
 
+    /**
+     * PROP
+     */
     for (auto prop : (*logDensity)) {
       unsigned int prop_id = prop.first;
       double slnCnt = (*logProp)[prop_id].second;
       size_t nb_records = prop.second.first;
       Record *records = prop.second.second;
 
+      // Best in prop
       struct _Best{
         unsigned int var_id;
         int val;
-        double density;
-        double a_avg;
+        double score;
+        double best_dens_seen;
       } best_varval_in_prop{0,0,0,0};
 
+      /**
+       * (VAR,VAL) in PROP
+       */
       for (unsigned int i=0; i<nb_records; ++i) {
         Record *r = &records[i];
         unsigned int idx = varvalpos(xD,r->var_id,r->val);
 
-        if (maxsd[idx] > best_varval_in_prop.density) {
-          best_varval_in_prop = _Best{r->var_id, r->val,
-                                      maxsd[idx], aAvgSD[idx]};
-        } else if (maxsd[idx] == best_varval_in_prop.density) {
-          if (aAvgSD[idx] > best_varval_in_prop.a_avg)
-            best_varval_in_prop = _Best{r->var_id, r->val,
-                                      maxsd[idx], aAvgSD[idx]};
+        auto score_varval = [&]() {
+          double _x = 0;
+          _x += -5.4669 * maxsd[idx];
+          _x += 11.6397 * aAvgSD[idx];
+          _x += -0.7173 * var_dens_entropy[std::make_pair(prop_id,r->var_id)];
+          _x += 9.5603 * maxRelSD[idx];
+          double intercept = -2.4036;
+          _x += intercept;
 
+          return 1.0/(1.0 + exp(-_x));
+        };
+
+        /**
+         * ON REGARDE
+         */
+        double dens = maxsd[idx];
+        double best_dens = best_varval_in_prop.best_dens_seen;
+        if (dens*0.95 > best_dens) {
+          best_varval_in_prop = _Best{r->var_id, r->val, score_varval(), dens};
+        } else if (dens > best_dens*0.95) {
+          double score = score_varval();
+          if (score > best_varval_in_prop.score)
+            best_varval_in_prop = _Best{r->var_id, r->val, score_varval(), dens};
+          if (dens > best_dens)
+            best_varval_in_prop.best_dens_seen = dens;
         }
       }
 
-      auto *r = &best_varval_in_prop;
-      unsigned int idx = varvalpos(xD,best_varval_in_prop.var_id,
-                                   best_varval_in_prop.val);
-      unsigned int var_idx = varpos(xD,best_varval_in_prop.var_id);
-
-      double _x = 0;
-      _x += -5.4669 * maxsd[idx];
-      _x += 11.6397 * aAvgSD[idx];
-      _x += -0.7173 * var_dens_entropy[std::make_pair(prop_id,r->var_id)];
-      _x += 9.5603 * maxRelSD[idx];
-      double intercept = -2.4036;
-      _x += intercept;
-
-
-      double score = 1.0/(1.0 + exp(-_x));
-
-      if (score > best_candidate.score) {
+      if (best_varval_in_prop.score > best_candidate.score) {
         best_candidate = Best{best_varval_in_prop.var_id,
-                              best_varval_in_prop.val, score};
+                              best_varval_in_prop.val,
+                              best_varval_in_prop.score};
       }
     }
 
