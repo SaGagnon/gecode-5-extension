@@ -118,6 +118,9 @@ namespace CBSDB {
     double w_sc_avg, double w_anti_sc_avg, double w_t_avg, double w_anti_t_avg,
     double w_d_avg);
 
+
+  int insert_varval_in_assigned(unsigned int var_idx, int val);
+
   /**
    * Create a new solution linked to the current execution.
    *

@@ -23,7 +23,7 @@
 #include <iostream>
 
 
-//#define SQL
+#define SQL
 
 #ifdef SQL
 #include "sql-interface.hh"
@@ -508,7 +508,11 @@ public:
           maxRelRatio[idx], wSCAvg[idx], wAntiSCAvg[idx], wTAvg[idx],
           wAntiTAvg[idx], wDAvg[idx]);
       }
+
     }
+    for (int i=0; i<x.size(); i++)
+      if (x[i].assigned())
+        CBSDB::insert_varval_in_assigned(x[i].varimp()->id(), x[i].val());
     #endif
 
     /**
@@ -536,15 +540,15 @@ public:
         unsigned int idx = varvalpos(xD,r->var_id,r->val);
 
         auto score_varval = [&]() {
-          double _x = 0;
-          _x += -3.8414 * maxsd[idx];
-          _x += 9.2520 * aAvgSD[idx];
-          _x += -1.3993 * var_dens_entropy[std::make_pair(prop_id,r->var_id)];
-          _x += 7.5693 * maxRelSD[idx];
-          double intercept = -1.2911;
-          _x += intercept;
-
-          return 1.0/(1.0 + exp(-_x));
+//          double _x = 0;
+//          _x += -4.4570 * maxsd[idx];
+//          _x += 9.8055 * aAvgSD[idx];
+//          _x += -1.1845 * var_dens_entropy[std::make_pair(prop_id,r->var_id)];
+//          _x += 8.1933 * maxRelSD[idx];
+//          double intercept = -1.5513;
+//          _x += intercept;
+//          return 1.0/(1.0 + exp(-_x));
+          return maxsd[idx];
         };
 
         /**

@@ -228,6 +228,23 @@ namespace CBSDB {
 
   }
 
+  int insert_varval_in_assigned(unsigned int var_idx, int val) {
+    if (current_db == NULL) return CBSDB_NO_ACTION_TAKEN;
+
+    if (do_we_insert()) {
+      std::stringstream sql;
+      sql << "insert into assigned(exec_id, node_id, var_idx, val) values(";
+      sql << current_exec_id << ","
+          << current_node_id << ","
+          << var_idx << ","
+          << val << ");";
+
+      if (db_exec(sql.str(), "Insertion in assigned failed"))
+        return CBSDB_FAILED;
+    }
+
+    return CBSDB_NO_ACTION_TAKEN;
+  }
 
   int new_solution() {
     if (current_db == NULL) return CBSDB_NO_ACTION_TAKEN;
@@ -265,53 +282,31 @@ namespace CBSDB {
     // We find unsatifiable nodes and update them in the database.
     if(solution_found) {
       std::stringstream sql;
-      sql << "UPDATE nodes SET sat = 1"
+      sql << " UPDATE nodes SET sat = 1"
           << " WHERE exec_id = " << current_exec_id
           << " AND node_id IN ("
 
         << " SELECT nn.node_id"
         << " FROM nodes AS nn"
         << " WHERE"
-        << " NOT exists("
-        << "     SELECT *"
-        << "     FROM nodes AS n"
-        << "       JOIN densities AS d"
-        << "         ON n.exec_id = d.exec_id"
-        << "            AND n.node_id = d.node_id"
-        << "       LEFT JOIN results AS r"
-        << "         ON d.exec_id = r.exec_id"
-        << "            AND d.var_idx = r.var_idx"
-        << "            AND d.val = r.val"
-        << "            AND r.res_id = 0" //TODO: temporaire
-        << "     WHERE n.exec_id = nn.exec_id AND n.node_id = nn.node_id"
-        << "           AND d.dens = 1"
-        << "           AND r.exec_id IS NULL"
-        << " ) AND ("
-        << "         SELECT count(DISTINCT d.var_idx)"
-        << "         FROM nodes AS n"
-        << "           JOIN densities AS d"
-        << "             ON n.exec_id = d.exec_id"
-        << "                AND n.node_id = d.node_id"
+        << "       ( SELECT count(*)"
+        << "         FROM assigned AS a"
         << "           JOIN results AS r"
-        << "             ON d.exec_id = r.exec_id"
-        << "                AND d.var_idx = r.var_idx"
-        << "                AND d.val = r.val"
+        << "             ON a.exec_id = r.exec_id"
+        << "                AND a.var_idx = r.var_idx"
+        << "                AND a.val = r.val"
         << "                AND r.res_id = 0" //TODO: temporaire
-        << "         WHERE n.exec_id = nn.exec_id"
-        << "               AND n.node_id = nn.node_id"
+        << "         WHERE a.exec_id = nn.exec_id"
+        << "               AND a.node_id = nn.node_id"
         << "       ) == ("
-        << "         SELECT count(DISTINCT d.var_idx)"
-        << "         FROM nodes AS n"
-        << "           JOIN densities AS d"
-        << "             ON n.exec_id = d.exec_id"
-        << "                AND n.node_id = d.node_id"
-        << "         WHERE n.exec_id = nn.exec_id"
-        << "               AND n.node_id = nn.node_id"
+        << "         SELECT count(*)"
+        << "         FROM assigned AS a"
+        << "         WHERE a.exec_id = nn.exec_id"
+        << "               AND a.node_id = nn.node_id"
         << "       )"
         << " AND nn.exec_id = " << current_exec_id
 
         << ");";
-
 
       if (db_exec(sql.str(), "Update of unsatisfiable nodes failed"))
         return CBSDB_FAILED;
