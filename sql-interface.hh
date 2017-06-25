@@ -172,6 +172,7 @@ namespace CBSDB {
 #include <gecode/int.hh>
 namespace CBSDB {
   int insert_if_solution(const Gecode::IntVarArray& x);
+  int insert_if_solution(const Gecode::BoolVarArray& x);
 }
 
 #endif

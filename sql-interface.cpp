@@ -284,7 +284,7 @@ namespace CBSDB {
         << "            AND d.val = r.val"
         << "            AND r.res_id = 0" //TODO: temporaire
         << "     WHERE n.exec_id = nn.exec_id AND n.node_id = nn.node_id"
-        << "           AND d.dens = 240"
+        << "           AND d.dens = 1"
         << "           AND r.exec_id IS NULL"
         << " ) AND ("
         << "         SELECT count(DISTINCT d.var_idx)"
@@ -328,6 +328,21 @@ namespace CBSDB {
 
 namespace CBSDB {
   int insert_if_solution(const Gecode::IntVarArray& x) {
+    if (current_db == NULL) return CBSDB_NO_ACTION_TAKEN;
+    for (int i=0; i<x.size(); i++)
+      if (!x[i].assigned())
+        return CBSDB_NO_ACTION_TAKEN;
+
+    int ret = CBSDB::new_solution();
+    if (ret) return ret;
+    for(int i=0; i<x.size(); i++) {
+      ret = CBSDB::insert_varval_in_solution(x[i].varimp()->id(), x[i].val());
+      if (ret) return ret;
+    }
+    return CBSDB_SUCCESS;
+  }
+
+  int insert_if_solution(const Gecode::BoolVarArray& x) {
     if (current_db == NULL) return CBSDB_NO_ACTION_TAKEN;
     for (int i=0; i<x.size(); i++)
       if (!x[i].assigned())
