@@ -34,7 +34,7 @@ if(${BUILD_SQL})
     set(SQL_SRC sqlite3.c sql-interface.cpp)
 endif()
 
-foreach(ex "latinsquare" "nonogram" "qcp")
+foreach(ex "latinsquare" "nonogram" "qcp" "sudoku")
     add_executable(${ex} ${ex}.cpp ${SQL_SRC})
     target_link_libraries(${ex} ${Gecode_LIBRARIES})
     if(${BUILD_SQL})
