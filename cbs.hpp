@@ -525,57 +525,64 @@ public:
       Record *records = prop.second.second;
 
       // Best in prop
-      struct _Best{
-        unsigned int var_id;
-        int val;
-        double score;
-        double best_dens_seen;
-      } best_varval_in_prop{0,0,0,0};
+//      struct _Best{
+//        unsigned int var_id;
+//        int val;
+//        double score;
+//        double best_dens_seen;
+//      } best_varval_in_prop{0,0,0,0};
 
       /**
        * (VAR,VAL) in PROP
        */
-      for (unsigned int i=0; i<nb_records; ++i) {
+      for (unsigned int i = 0; i < nb_records; ++i) {
         Record *r = &records[i];
-        unsigned int idx = varvalpos(xD,r->var_id,r->val);
+        unsigned int idx = varvalpos(xD, r->var_id, r->val);
 
         auto score_varval = [&]() {
           double _x = 0;
-          _x += -4.6166 * maxsd[idx];
-          _x += 10.3650 * aAvgSD[idx];
-          _x += -1.7141 * var_dens_entropy[std::make_pair(prop_id,r->var_id)];
-          _x += 8.6209 * maxRelSD[idx];
-          double intercept = -1.1895;
+          _x += 5.2476 * aAvgSD[idx];
+          _x += 7.6552 * maxRelSD[idx];
+          double intercept = -2.7161;
           _x += intercept;
-          return 1.0 / ( 1.0 + exp(-_x) );
+          return 1.0 / (1.0 + exp(-_x));
         };
 
-        /**
-         * ON REGARDE
-         */
-        double dens = maxsd[idx];
-        double best_dens = best_varval_in_prop.best_dens_seen;
-        if (dens*0.95 > best_dens) {
-          best_varval_in_prop = _Best{r->var_id, r->val, score_varval(), dens};
-        } else if (dens > best_dens*0.95) {
-          double score = score_varval();
-          if (score > best_varval_in_prop.score)
-            best_varval_in_prop = _Best{r->var_id, r->val, score_varval(),
-                                        best_dens};
-          if (dens > best_dens)
-            best_varval_in_prop.best_dens_seen = dens;
+//        /**
+//         * ON REGARDE
+//         */
+//        double dens = maxsd[idx];
+//        double best_dens = best_varval_in_prop.best_dens_seen;
+//        if (dens*0.95 > best_dens) {
+//          best_varval_in_prop = _Best{r->var_id, r->val, score_varval(), dens};
+//        } else if (dens > best_dens*0.95) {
+//          double score = score_varval();
+//          if (score > best_varval_in_prop.score)
+//            best_varval_in_prop = _Best{r->var_id, r->val, score_varval(),
+//                                        best_dens};
+//          if (dens > best_dens)
+//            best_varval_in_prop.best_dens_seen = dens;
+//        }
+
+        double score = score_varval();
+
+        if (score > best_candidate.score) {
+          best_candidate = Best{r->var_id,
+                                r->val,
+                                score};
+
         }
+
+//      if (best_varval_in_prop.score > best_candidate.score) {
+//        best_candidate = Best{best_varval_in_prop.var_id,
+//                              best_varval_in_prop.val,
+//                              best_varval_in_prop.score};
+//      }
       }
 
-      if (best_varval_in_prop.score > best_candidate.score) {
-        best_candidate = Best{best_varval_in_prop.var_id,
-                              best_varval_in_prop.val,
-                              best_varval_in_prop.score};
-      }
     }
-
     assert(best_candidate.var_id != -1);
-    return Candidate{xD.positions[best_candidate.var_id],best_candidate.val};
+    return Candidate{xD.positions[best_candidate.var_id], best_candidate.val};
   }
 
 };
