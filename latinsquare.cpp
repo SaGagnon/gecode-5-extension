@@ -121,9 +121,9 @@ public:
       // TODO: Mettre une option command line pour activer cette ligne ou non
       #ifdef SQL
       int ret = CBSDB::start_execution(
-        "latinsquare", opt.size(), "Gecode", CBSDB::ECH10, 15000, "aAvgSD",
+        "latinsquare", opt.size(), "Gecode", CBSDB::FULL, 15000, "maxSD",
                                        "base", "/media/sam/hdd3tb/cbs-scripts"
-                                         "/bd/correct_sat/cbs.db");
+                                         "/bd/new_schema_no_prop/cbs.db");
       #endif
 
       // In case there's no more propagators with include instrumentation

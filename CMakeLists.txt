@@ -28,10 +28,11 @@ set(EXAMPLES
 
 
 set(SQL_SRC "")
-option(BUILD_SQL "Build SQLite profiling." OFF)
+option(BUILD_SQL "Build SQLite profiling." ON)
 if(${BUILD_SQL})
     find_package(Threads REQUIRED)
     set(SQL_SRC sqlite3.c sql-interface.cpp)
+    add_definitions(-DSQL)
 endif()
 
 foreach(ex "latinsquare" "nonogram" "qcp" "sudoku")

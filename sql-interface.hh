@@ -90,9 +90,9 @@ namespace CBSDB {
    *  CBSDB_NO_ACTION_TAKEN: We didn't try to insert the propagator. According
    *  the sampling method given in start_execution, we must skip this one.
    */
-  int new_propagator(std::string propagator_name, unsigned int prop_id,
-                     std::string consistency_level_name,
-                     double solution_count);
+//  int new_propagator(std::string propagator_name, unsigned int prop_id,
+//                     std::string consistency_level_name,
+//                     double solution_count);
 
   /**
    * Insert a new (var,val) pair associated with the current propagator.
@@ -108,13 +108,13 @@ namespace CBSDB {
    * @param dens
    *  The calculated density associated with the pair (var,val).
    */
-  int insert_varval_density(unsigned int prop_id, unsigned int var_id,
-                            int val, double dens);
+//  int insert_varval_density(unsigned int prop_id, unsigned int var_id,
+//                            int val, double dens);
 
   int insert_varval_density_features(
-    unsigned int prop_id, unsigned int var_id, int val, double dens,
-    double sln_cnt, double sum_sln_cnt, double a_avg_sd, double var_dom_size,
-    double var_dens_entropy, double max_rel_sd, double max_rel_ratio,
+    unsigned int var_id, int val, double dens,
+    double a_avg_sd, double var_dom_size,
+    double max_rel_sd, double max_rel_ratio,
     double w_sc_avg, double w_anti_sc_avg, double w_t_avg, double w_anti_t_avg,
     double w_d_avg);
 

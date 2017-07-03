@@ -135,84 +135,79 @@ namespace CBSDB {
   }
 
 
-  int new_propagator(std::string propagator_name, unsigned int prop_id,
-                     std::string consistency_level_name,
-                     double solution_count) {
-    if (current_db == NULL) return CBSDB_NO_ACTION_TAKEN;
+//  int new_propagator(std::string propagator_name, unsigned int prop_id,
+//                     std::string consistency_level_name,
+//                     double solution_count) {
+//    if (current_db == NULL) return CBSDB_NO_ACTION_TAKEN;
+//
+//    if (do_we_insert()) {
+//      if (current_node_id == INVALID) {
+//        std::cout << "Current node ID invalid" << std::endl;
+//        return CBSDB_FAILED;
+//      }
+//
+//      //TODO: Hack avec propagator_name.
+//      std::stringstream sql;
+//      sql << "insert into propagators(exec_id, node_id, prop_id, prop_name, "
+//          << "cons_lvl, log_solutionCount) values("
+//          << current_exec_id << ", "
+//          << current_node_id << ", "
+//          << prop_id << ", "
+//          << "'" << propagator_name << "', "
+//          << "'" << consistency_level_name << "', "
+//          << log(solution_count) << ");";
+//
+//      if (db_exec(sql.str(), "Creation of new propagtor failed"))
+//        return CBSDB_FAILED;
+//
+//      return CBSDB_SUCCESS;
+//    }
+//    return CBSDB_NO_ACTION_TAKEN;
+//  }
 
-    if (do_we_insert()) {
-      if (current_node_id == INVALID) {
-        std::cout << "Current node ID invalid" << std::endl;
-        return CBSDB_FAILED;
-      }
-
-      //TODO: Hack avec propagator_name.
-      std::stringstream sql;
-      sql << "insert into propagators(exec_id, node_id, prop_id, prop_name, "
-          << "cons_lvl, log_solutionCount) values("
-          << current_exec_id << ", "
-          << current_node_id << ", "
-          << prop_id << ", "
-          << "'" << propagator_name << "', "
-          << "'" << consistency_level_name << "', "
-          << log(solution_count) << ");";
-
-      if (db_exec(sql.str(), "Creation of new propagtor failed"))
-        return CBSDB_FAILED;
-
-      return CBSDB_SUCCESS;
-    }
-    return CBSDB_NO_ACTION_TAKEN;
-  }
-
-  int insert_varval_density(unsigned int prop_id, unsigned int var_id, int val,
-                            double dens) {
-    if (current_db == NULL) return CBSDB_NO_ACTION_TAKEN;
-
-    if (do_we_insert()) {
-      std::stringstream sql;
-      sql << "insert into densities(exec_id, node_id, prop_id, var_idx, val, "
-        "dens) values(";
-      sql << current_exec_id << ","
-          << current_node_id << ","
-          << prop_id << ","
-          << var_id << ","
-          << val << ","
-          // We encode the density value between 0 and 240 to save space.
-          << (int) (dens * 240) << ");";
-
-      if (db_exec(sql.str(), "Creation of the (var,val) pair failed"))
-        return CBSDB_FAILED;
-    }
-    return CBSDB_NO_ACTION_TAKEN;
-  }
+//  int insert_varval_density(unsigned int prop_id, unsigned int var_id, int val,
+//                            double dens) {
+//    if (current_db == NULL) return CBSDB_NO_ACTION_TAKEN;
+//
+//    if (do_we_insert()) {
+//      std::stringstream sql;
+//      sql << "insert into densities(exec_id, node_id, prop_id, var_idx, val, "
+//        "dens) values(";
+//      sql << current_exec_id << ","
+//          << current_node_id << ","
+//          << prop_id << ","
+//          << var_id << ","
+//          << val << ","
+//          // We encode the density value between 0 and 240 to save space.
+//          << (int) (dens * 240) << ");";
+//
+//      if (db_exec(sql.str(), "Creation of the (var,val) pair failed"))
+//        return CBSDB_FAILED;
+//    }
+//    return CBSDB_NO_ACTION_TAKEN;
+//  }
 
 
   int insert_varval_density_features(
-    unsigned int prop_id, unsigned int var_id, int val, double dens,
-    double sln_cnt, double sum_sln_cnt, double a_avg_sd, double var_dom_size,
-    double var_dens_entropy, double max_rel_sd, double max_rel_ratio,
+    unsigned int var_id, int val, double dens, double a_avg_sd,
+    double var_dom_size, double max_rel_sd, double max_rel_ratio,
     double w_sc_avg, double w_anti_sc_avg, double w_t_avg, double w_anti_t_avg,
     double w_d_avg) {
     if (current_db == NULL) return CBSDB_NO_ACTION_TAKEN;
 
     if (do_we_insert()) {
       std::stringstream sql;
-      sql << "insert into densities(exec_id, node_id, prop_id, var_idx, "
-        "val, dens, log_sln_cnt, log_sum_sln_cnt, a_avg_sd, var_dom_size, "
-        "var_dens_entropy, max_rel_sd, max_rel_ratio, w_sc_avg, "
+      sql << "insert into densities(exec_id, node_id, var_idx, "
+        "val, dens, a_avg_sd, var_dom_size, "
+        "max_rel_sd, max_rel_ratio, w_sc_avg, "
         "w_anti_sc_avg, w_t_avg, w_anti_t_avg, w_d_avg) values(";
       sql << current_exec_id << ","
           << current_node_id << ","
-          << prop_id << ","
           << var_id << ","
           << val << ","
           << dens << ","
-          << log(sln_cnt) << ","
-          << log(sum_sln_cnt) << ","
           << a_avg_sd << ","
           << var_dom_size << ","
-          << var_dens_entropy << ","
           << max_rel_sd << ","
           << max_rel_ratio << ","
           << w_sc_avg << ","

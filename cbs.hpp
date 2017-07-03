@@ -23,8 +23,6 @@
 #include <iostream>
 
 
-//#define SQL
-
 #ifdef SQL
 #include "sql-interface.hh"
 #endif
@@ -409,11 +407,6 @@ public:
       sum_prop_card_prod[i] = 0;
       wDAvg[i] = 0;
     }
-    /// CLEAR
-
-
-
-    std::map<std::pair<unsigned int, unsigned int>, double> var_dens_entropy;
 
     std::unordered_map<unsigned int, double> prop_card_prod;
     std::unordered_map<unsigned int, double> prop_proj_tightness;
@@ -454,11 +447,6 @@ public:
       sum_slnCnt_x_dens[idx] += slnCnt * density;
       sum_slnCnt[idx] += slnCnt;
 
-      auto key = std::make_pair(prop_id, var_id);
-      if (var_dens_entropy.find(key) == var_dens_entropy.end())
-        var_dens_entropy[key] = 0;
-      var_dens_entropy[key] -= density*log(density) / log(var_dom_size[idx]);
-
       ctrTightness_x_dens[idx] += prop_proj_tightness[prop_id] * density;
       sum_ctrTightness[idx] += prop_proj_tightness[prop_id];
 
@@ -491,25 +479,36 @@ public:
 
     #ifdef SQL
     // TODO: Mettre un flag qui fait ça ou non ici...
-    for (auto prop : (*logDensity)) {
-      unsigned int prop_id = prop.first;
-      double slnCnt = (*logProp)[prop_id].second;
-      size_t nb_records = prop.second.first;
-      Record *records = prop.second.second;
-      for (unsigned int i=0; i<nb_records; ++i) {
-        Record *r = &records[i];
-        unsigned int idx = varvalpos(xD,r->var_id,r->val);
-        unsigned int var_idx = varpos(xD,r->var_id);
 
-        CBSDB::insert_varval_density_features(
-          prop_id, r->var_id, r->val, r->density, slnCnt, sum_slnCnt[idx],
-          aAvgSD[idx], var_dom_size[idx],
-          var_dens_entropy[std::make_pair(prop_id, r->var_id)], maxRelSD[idx],
-          maxRelRatio[idx], wSCAvg[idx], wAntiSCAvg[idx], wTAvg[idx],
-          wAntiTAvg[idx], wDAvg[idx]);
-      }
 
-    }
+//    for (auto prop : (*logDensity)) {
+//      unsigned int prop_id = prop.first;
+//      double slnCnt = (*logProp)[prop_id].second;
+//      size_t nb_records = prop.second.first;
+//      Record *records = prop.second.second;
+//      for (unsigned int i=0; i<nb_records; ++i) {
+//        Record *r = &records[i];
+//        unsigned int idx = varvalpos(xD,r->var_id,r->val);
+//        unsigned int var_idx = varpos(xD,r->var_id);
+//
+//        CBSDB::insert_varval_density_features(
+//          prop_id, r->var_id, r->val, r->density, slnCnt, sum_slnCnt[idx],
+//          aAvgSD[idx], var_dom_size[idx],
+//          var_dens_entropy[std::make_pair(prop_id, r->var_id)], maxRelSD[idx],
+//          maxRelRatio[idx], wSCAvg[idx], wAntiSCAvg[idx], wTAvg[idx],
+//          wAntiTAvg[idx], wDAvg[idx]);
+//      }
+//
+//    }
+
+    for_every_varIdx_val(home, [&](unsigned int var_id, int val) {
+      unsigned int idx = varvalpos(xD,var_id,val);
+      CBSDB::insert_varval_density_features(
+        var_id, val, maxsd[idx], aAvgSD[idx], var_dom_size[idx], maxRelSD[idx],
+        maxRelRatio[idx], wSCAvg[idx], wAntiSCAvg[idx], wTAvg[idx],
+        wAntiTAvg[idx], wDAvg[idx]);
+    });
+
     for (int i=0; i<x.size(); i++)
       if (x[i].assigned())
         CBSDB::insert_varval_in_assigned(x[i].varimp()->id(), x[i].val());
@@ -543,8 +542,9 @@ public:
           double _x = 0;
 //          _x += aAvgSD[idx];
 //          _x += maxRelSD[idx];
+            return maxsd[idx];
 //          return 1.0 / (1.0 + exp(-_x));
-          return aAvgSD[idx] - (1.0/(double)var_dom_size[idx]);
+//          return aAvgSD[idx] - (1.0/(double)var_dom_size[idx]);
         };
 
 //        /**
@@ -758,9 +758,6 @@ public:
         heur.set_current_prop(prop_id);
         p.propagator().cbs(home,&heur);
       }
-      #ifdef SQL
-      CBSDB::new_propagator("", prop_id, "", logProp[prop_id].second);
-      #endif
     }
 
 //    #ifdef SQL
