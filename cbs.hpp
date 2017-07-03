@@ -459,7 +459,7 @@ public:
         var_dens_entropy[key] = 0;
       var_dens_entropy[key] -= density*log(density) / log(var_dom_size[idx]);
 
-      ctrTightness_x_dens[idx] = prop_proj_tightness[prop_id] * density;
+      ctrTightness_x_dens[idx] += prop_proj_tightness[prop_id] * density;
       sum_ctrTightness[idx] += prop_proj_tightness[prop_id];
 
       sum_prop_card_prod_x_density[idx] += prop_card_prod[prop_id] * density;
