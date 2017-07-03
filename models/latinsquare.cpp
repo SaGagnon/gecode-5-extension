@@ -29,7 +29,7 @@
 #include <gecode/int.hh>
 #include <gecode/minimodel.hh>
 
-#include "cbs.hpp"
+#include <cbs.hpp>
 
 using namespace Gecode;
 
@@ -121,7 +121,7 @@ public:
       // TODO: Mettre une option command line pour activer cette ligne ou non
       #ifdef SQL
       int ret = CBSDB::start_execution(
-        "latinsquare", opt.size(), "Gecode", CBSDB::FULL, 15000, "maxSD",
+        "latinsquare", opt.size(), "Gecode", CBSDB::FULL, 50000, "aAvgSD",
                                        "base", "/media/sam/hdd3tb/cbs-scripts"
                                          "/bd/new_schema_no_prop/cbs.db");
       #endif

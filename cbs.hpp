@@ -24,7 +24,7 @@
 
 
 #ifdef SQL
-#include "sql-interface.hh"
+#include <sql-interface.hh>
 #endif
 
 using namespace Gecode;
@@ -478,29 +478,6 @@ public:
 
 
     #ifdef SQL
-    // TODO: Mettre un flag qui fait ça ou non ici...
-
-
-//    for (auto prop : (*logDensity)) {
-//      unsigned int prop_id = prop.first;
-//      double slnCnt = (*logProp)[prop_id].second;
-//      size_t nb_records = prop.second.first;
-//      Record *records = prop.second.second;
-//      for (unsigned int i=0; i<nb_records; ++i) {
-//        Record *r = &records[i];
-//        unsigned int idx = varvalpos(xD,r->var_id,r->val);
-//        unsigned int var_idx = varpos(xD,r->var_id);
-//
-//        CBSDB::insert_varval_density_features(
-//          prop_id, r->var_id, r->val, r->density, slnCnt, sum_slnCnt[idx],
-//          aAvgSD[idx], var_dom_size[idx],
-//          var_dens_entropy[std::make_pair(prop_id, r->var_id)], maxRelSD[idx],
-//          maxRelRatio[idx], wSCAvg[idx], wAntiSCAvg[idx], wTAvg[idx],
-//          wAntiTAvg[idx], wDAvg[idx]);
-//      }
-//
-//    }
-
     for_every_varIdx_val(home, [&](unsigned int var_id, int val) {
       unsigned int idx = varvalpos(xD,var_id,val);
       CBSDB::insert_varval_density_features(
@@ -523,14 +500,6 @@ public:
       size_t nb_records = prop.second.first;
       Record *records = prop.second.second;
 
-      // Best in prop
-//      struct _Best{
-//        unsigned int var_id;
-//        int val;
-//        double score;
-//        double best_dens_seen;
-//      } best_varval_in_prop{0,0,0,0};
-
       /**
        * (VAR,VAL) in PROP
        */
@@ -540,28 +509,12 @@ public:
 
         auto score_varval = [&]() {
           double _x = 0;
-//          _x += aAvgSD[idx];
-//          _x += maxRelSD[idx];
-            return maxsd[idx];
-//          return 1.0 / (1.0 + exp(-_x));
-//          return aAvgSD[idx] - (1.0/(double)var_dom_size[idx]);
+          _x += 4.8204 * aAvgSD[idx];
+          _x += 8.0080 * maxRelSD[idx];
+          double intercept = -2.6711;
+          _x += intercept;
+          return 1.0 / (1.0 + exp(-_x));
         };
-
-//        /**
-//         * ON REGARDE
-//         */
-//        double dens = maxsd[idx];
-//        double best_dens = best_varval_in_prop.best_dens_seen;
-//        if (dens*0.95 > best_dens) {
-//          best_varval_in_prop = _Best{r->var_id, r->val, score_varval(), dens};
-//        } else if (dens > best_dens*0.95) {
-//          double score = score_varval();
-//          if (score > best_varval_in_prop.score)
-//            best_varval_in_prop = _Best{r->var_id, r->val, score_varval(),
-//                                        best_dens};
-//          if (dens > best_dens)
-//            best_varval_in_prop.best_dens_seen = dens;
-//        }
 
         double score = score_varval();
 
@@ -572,11 +525,6 @@ public:
 
         }
 
-//      if (best_varval_in_prop.score > best_candidate.score) {
-//        best_candidate = Best{best_varval_in_prop.var_id,
-//                              best_varval_in_prop.val,
-//                              best_varval_in_prop.score};
-//      }
       }
 
     }

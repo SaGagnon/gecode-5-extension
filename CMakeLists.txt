@@ -15,7 +15,6 @@ add_executable(cbs cbs.hpp)
 set_target_properties(cbs PROPERTIES LINKER_LANGUAGE CXX)
 target_link_libraries(cbs ${Gecode_LIBRARIES})
 
-#set(OTHER_SRC sql-interface.cpp)
 
 set(EXAMPLES
         "latinsquare"
@@ -28,36 +27,20 @@ set(EXAMPLES
 
 
 set(SQL_SRC "")
-option(BUILD_SQL "Build SQLite profiling." ON)
+option(BUILD_SQL "Build SQLite profiling." OFF)
 if(${BUILD_SQL})
     find_package(Threads REQUIRED)
-    set(SQL_SRC sqlite3.c sql-interface.cpp)
+    include_directories(sql)
+    set(SQL_SRC sql/sqlite3.c sql/sql-interface.cpp)
     add_definitions(-DSQL)
 endif()
 
-foreach(ex "latinsquare" "nonogram" "qcp" "sudoku")
-    add_executable(${ex} ${ex}.cpp ${SQL_SRC})
+include_directories(./)
+
+foreach(ex "latinsquare" "nonogram")
+    add_executable(${ex} models/${ex}.cpp ${SQL_SRC})
     target_link_libraries(${ex} ${Gecode_LIBRARIES})
     if(${BUILD_SQL})
         target_link_libraries(${ex} Threads::Threads ${CMAKE_DL_LIBS})
     endif()
 endforeach(ex)
-
-
-#add_executable(latinsquare latinsquare.cpp ${OTHER_SRC})
-#target_link_libraries(latinsquare ${Gecode_LIBRARIES})
-#
-#add_executable(nonogram nonogram.cpp)
-#target_link_libraries(nonogram ${Gecode_LIBRARIES})
-#
-#add_executable(langford-number langford-number.cpp ${OTHER_SRC})
-#target_link_libraries(langford-number ${Gecode_LIBRARIES})
-#
-#add_executable(ortho-latin ortho-latin.cpp ${OTHER_SRC})
-#target_link_libraries(ortho-latin ${Gecode_LIBRARIES})
-#
-#add_executable(pentominoes pentominoes.cpp ${OTHER_SRC})
-#target_link_libraries(pentominoes ${Gecode_LIBRARIES})
-#
-#add_executable(qcp qcp.cpp ${OTHER_SRC})
-#target_link_libraries(qcp ${Gecode_LIBRARIES})
