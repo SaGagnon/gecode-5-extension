@@ -1,3 +1,8 @@
+execute_process(
+        COMMAND "make"
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 cmake_minimum_required(VERSION 3.6)
 project(gecode-5.0.0-extension)
 
@@ -25,9 +30,14 @@ set(EXAMPLES
         "qcp"
         )
 
+#add_custom_target(
+#        sql_structs ALL
+#        COMMAND "{CMAKE_CURRENT_SOURCE_DIR}/sql/sql-interface.hh.sh"
+#        DEPENDS {CMAKE_CURRENT_SOURCE_DIR}/schema.txt
+#)
 
 set(SQL_SRC "")
-option(BUILD_SQL "Build SQLite profiling." OFF)
+option(BUILD_SQL "Build SQLite profiling." ON)
 if(${BUILD_SQL})
     find_package(Threads REQUIRED)
     include_directories(sql)

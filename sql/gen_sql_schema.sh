@@ -12,10 +12,10 @@ while read line; do
             table_name=$(echo $line | cut -d" " -f2)
             echo "create table $table_name("
             ;;
-        "#SQL WITH_ROWID")
+        "#END WITH_ROWID")
             echo ");"
             ;;
-        "#SQL WITHOUT_ROWID")
+        "#END WITHOUT_ROWID")
             echo ") WITHOUT ROWID;"
             ;;
         \#SQL*)

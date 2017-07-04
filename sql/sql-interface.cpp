@@ -7,17 +7,21 @@
 #include <cassert>
 #include <cmath>
 
+#include "sql-str-query.hpp"
+
 //TODO: Faire une description ici qui mentionne que l'on doit toujours caller
 //TODO: end_execution() sinon la DB finit dans un état incorrect + mentionner
 //TODO: les attributs globales.
 
 namespace CBSDB {
 
+  /*****************************************************************************
+   * BEGIN GLOBAL PROPERTIES
+   ****************************************************************************/
   const int INVALID = -1;
 
-  // GLOBAL PROPERTIES
   sqlite3 *current_db = NULL;
-  EchMethod ech_method;
+  unsigned int ech_method;
 
   sqlite3_int64 current_exec_id = INVALID;
   int current_node_id = INVALID;
@@ -27,14 +31,9 @@ namespace CBSDB {
 
   unsigned int max_nb_nodes;
 
-
-  std::string to_lower_case(const std::string& s) {
-    std::string lower = s;
-    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-    return lower;
-  }
-
-
+  /*****************************************************************************
+   * HELPER METHODS
+   ****************************************************************************/
   bool do_we_insert() {
     if (current_node_id >= max_nb_nodes)
       return false;
@@ -55,224 +54,105 @@ namespace CBSDB {
   }
 
 
-  int db_exec(std::string sql_statement, std::string err) {
+  bool db_exec(std::string sql_statement) {
     char *errMsg;
     if (sqlite3_exec(current_db, sql_statement.c_str(),
                      NULL, NULL, &errMsg) != SQLITE_OK) {
-      std::cout << err << ": " << errMsg << std::endl;
+      std::cout << sql_statement;
+      std::cout << "err: " << errMsg << std::endl;
       sqlite3_free(errMsg);
-      return CBSDB_FAILED;
+      return false;
     }
-    return CBSDB_SUCCESS;
+    return true;
   }
 
+  /*****************************************************************************
+   * DEFINES
+   ****************************************************************************/
 
-  int start_execution(std::string problem_name, unsigned int num_example,
-                      std::string solver_name, EchMethod ech_method0,
-                      unsigned int max_nb_nodes0,
-                      std::string branching_heuristic_name,
-                      std::string model_version_name, std::string path_to_db) {
+#define EXEC_SQL(str) \
+  if (!db_exec(str)) \
+    return;
+
+#define DB_ACTIVE_OR_RETURN if (current_db == NULL) return;
+
+#define CURRENT_EXECID_VALID_OR_RETURN \
+  if (current_exec_id == INVALID) { \
+    std::cout << "Current execution ID invalid" << std::endl; \
+    return; \
+  }
+
+#define DO_WE_INSERT_OR_RETURN if(!do_we_insert()) return;
+
+  /*****************************************************************************
+   * IMPLEMENTATION
+   ****************************************************************************/
+
+  void start_execution(struct executions& s, std::string path_to_db) {
     if (sqlite3_open(path_to_db.c_str(), &current_db) != SQLITE_OK) {
       std::cout << "Error in opening database" << std::endl;
-      return CBSDB_FAILED;
+      return;
     }
 
-    if (ech_method0 < 0 || ech_method0 >= NB_ECH_METHOD) {
+    if (s.ech_method < 0 || s.ech_method >= NB_ECH_METHOD) {
       std::cout << "Sampling method not valid." << std::endl;
-      return CBSDB_FAILED;
+      return;
     }
-    ech_method = ech_method0;
-    max_nb_nodes = max_nb_nodes0;
 
-    if (db_exec("BEGIN TRANSACTION;", "Begin transaction failed"))
-      return CBSDB_FAILED;
+    EXEC_SQL("BEGIN TRANSACTION;")
 
-    std::stringstream sql;
-    sql
-      << "insert into executions("
-      << "pb_name, num_ex, solveur_name, ech_method, max_nb_nodes, "
-      <<  "branching_name, version_name) "
-      << "values("
-      << "'" << to_lower_case(problem_name) << "', "
-      << num_example << ", "
-      << "'" << to_lower_case(solver_name) << "', "
-      << ech_method0 << ", "
-      << max_nb_nodes0 << ", "
-      << "'" << to_lower_case(branching_heuristic_name) << "', "
-      << "'" << to_lower_case(model_version_name) << "'); ";
-
-    if (db_exec(sql.str(), "Creation of new execution failed"))
-      return CBSDB_FAILED;
+    ech_method = s.ech_method;
+    max_nb_nodes = s.max_nb_nodes;
+    EXEC_SQL(sql_str_insert_into_executions(s))
 
     // ID of the executions we just inserted. Will be used for inserting nodes.
     current_exec_id = sqlite3_last_insert_rowid(current_db);
-    return CBSDB_SUCCESS;
   }
 
-
-  int new_node() {
-    if (current_db == NULL) return CBSDB_NO_ACTION_TAKEN;
+  void new_node() {
+    DB_ACTIVE_OR_RETURN
     current_node_id++;
+    DO_WE_INSERT_OR_RETURN
+    CURRENT_EXECID_VALID_OR_RETURN
 
-    if (do_we_insert()) {
-      if (current_exec_id == INVALID) {
-        std::cout << "Current execution ID invalid" << std::endl;
-        return CBSDB_FAILED;
-      }
+    nodes n;
+    n.exec_id = (unsigned int)current_exec_id;
+    n.node_id = (unsigned int)current_node_id;
+    n.sat = 0;
 
-      std::stringstream sql;
-      sql << "insert into nodes(node_id, exec_id, sat) values("
-          << current_node_id << ", "
-          << current_exec_id << ","
-          << 0 << ");";
-
-      if (db_exec(sql.str(), "Creation of new node failed"))
-        return CBSDB_FAILED;
-
-      return CBSDB_SUCCESS;
-    }
-    return CBSDB_NO_ACTION_TAKEN;
+    EXEC_SQL(sql_str_insert_into_nodes(n))
   }
 
+  void insert_varval_density(struct densities& s) {
+    DB_ACTIVE_OR_RETURN
+    DO_WE_INSERT_OR_RETURN
 
-//  int new_propagator(std::string propagator_name, unsigned int prop_id,
-//                     std::string consistency_level_name,
-//                     double solution_count) {
-//    if (current_db == NULL) return CBSDB_NO_ACTION_TAKEN;
-//
-//    if (do_we_insert()) {
-//      if (current_node_id == INVALID) {
-//        std::cout << "Current node ID invalid" << std::endl;
-//        return CBSDB_FAILED;
-//      }
-//
-//      //TODO: Hack avec propagator_name.
-//      std::stringstream sql;
-//      sql << "insert into propagators(exec_id, node_id, prop_id, prop_name, "
-//          << "cons_lvl, log_solutionCount) values("
-//          << current_exec_id << ", "
-//          << current_node_id << ", "
-//          << prop_id << ", "
-//          << "'" << propagator_name << "', "
-//          << "'" << consistency_level_name << "', "
-//          << log(solution_count) << ");";
-//
-//      if (db_exec(sql.str(), "Creation of new propagtor failed"))
-//        return CBSDB_FAILED;
-//
-//      return CBSDB_SUCCESS;
-//    }
-//    return CBSDB_NO_ACTION_TAKEN;
-//  }
-
-//  int insert_varval_density(unsigned int prop_id, unsigned int var_id, int val,
-//                            double dens) {
-//    if (current_db == NULL) return CBSDB_NO_ACTION_TAKEN;
-//
-//    if (do_we_insert()) {
-//      std::stringstream sql;
-//      sql << "insert into densities(exec_id, node_id, prop_id, var_idx, val, "
-//        "dens) values(";
-//      sql << current_exec_id << ","
-//          << current_node_id << ","
-//          << prop_id << ","
-//          << var_id << ","
-//          << val << ","
-//          // We encode the density value between 0 and 240 to save space.
-//          << (int) (dens * 240) << ");";
-//
-//      if (db_exec(sql.str(), "Creation of the (var,val) pair failed"))
-//        return CBSDB_FAILED;
-//    }
-//    return CBSDB_NO_ACTION_TAKEN;
-//  }
-
-
-  int insert_varval_density_features(
-    unsigned int var_id, int val, double dens, double a_avg_sd,
-    double var_dom_size, double max_rel_sd, double max_rel_ratio,
-    double w_sc_avg, double w_anti_sc_avg, double w_t_avg, double w_anti_t_avg,
-    double w_d_avg) {
-    if (current_db == NULL) return CBSDB_NO_ACTION_TAKEN;
-
-    if (do_we_insert()) {
-      std::stringstream sql;
-      sql << "insert into densities(exec_id, node_id, var_idx, "
-        "val, dens, a_avg_sd, var_dom_size, "
-        "max_rel_sd, max_rel_ratio, w_sc_avg, "
-        "w_anti_sc_avg, w_t_avg, w_anti_t_avg, w_d_avg) values(";
-      sql << current_exec_id << ","
-          << current_node_id << ","
-          << var_id << ","
-          << val << ","
-          << dens << ","
-          << a_avg_sd << ","
-          << var_dom_size << ","
-          << max_rel_sd << ","
-          << max_rel_ratio << ","
-          << w_sc_avg << ","
-          << w_anti_sc_avg << ","
-          << w_t_avg << ","
-          << w_anti_t_avg << ","
-          << w_d_avg << ");";
-
-      if (db_exec(sql.str(), "Creation of the (var,val) pair failed"))
-        return CBSDB_FAILED;
-    }
-    return CBSDB_NO_ACTION_TAKEN;
-
+    EXEC_SQL(sql_str_insert_into_densities(s))
   }
 
-  int insert_varval_in_assigned(unsigned int var_idx, int val) {
-    if (current_db == NULL) return CBSDB_NO_ACTION_TAKEN;
+  void insert_varval_in_assigned(struct assigned& s) {
+    DB_ACTIVE_OR_RETURN
+    DO_WE_INSERT_OR_RETURN
 
-    if (do_we_insert()) {
-      std::stringstream sql;
-      sql << "insert into assigned(exec_id, node_id, var_idx, val) values(";
-      sql << current_exec_id << ","
-          << current_node_id << ","
-          << var_idx << ","
-          << val << ");";
-
-      if (db_exec(sql.str(), "Insertion in assigned failed"))
-        return CBSDB_FAILED;
-    }
-
-    return CBSDB_NO_ACTION_TAKEN;
+    EXEC_SQL(sql_str_insert_into_assigned(s))
   }
 
-  int new_solution() {
-    if (current_db == NULL) return CBSDB_NO_ACTION_TAKEN;
+  void new_solution() {
+    DB_ACTIVE_OR_RETURN
+
     current_result_id++;
-    return CBSDB_SUCCESS;
   }
 
-  int insert_varval_in_solution(unsigned int var_idx, int val) {
-    if (current_db == NULL) return CBSDB_NO_ACTION_TAKEN;
+  void insert_varval_in_solution(struct results& s) {
+    DB_ACTIVE_OR_RETURN
+    CURRENT_EXECID_VALID_OR_RETURN
 
-    if (current_exec_id == INVALID) {
-      std::cout << "Current execution ID invalid" << std::endl;
-      return CBSDB_FAILED;
-    }
-
-    std::stringstream sql;
-    sql << "insert into results(res_id, exec_id, var_idx, val) "
-        << "values("
-        << current_result_id << ", "
-        << current_exec_id << ", "
-        << var_idx << ", "
-        << val << ");";
-
-    if (db_exec(sql.str(), "Insertion in results failed"))
-      return CBSDB_FAILED;
-
+    EXEC_SQL(sql_str_insert_into_results(s))
     solution_found = true;
-    return CBSDB_SUCCESS;
   }
 
-
-  int end_execution() {
-    if (current_db == NULL) return CBSDB_NO_ACTION_TAKEN;
+  void end_execution() {
+    DB_ACTIVE_OR_RETURN
 
     // We find unsatifiable nodes and update them in the database.
     if(solution_found) {
@@ -303,47 +183,40 @@ namespace CBSDB {
 
         << ");";
 
-      if (db_exec(sql.str(), "Update of unsatisfiable nodes failed"))
-        return CBSDB_FAILED;
+      EXEC_SQL(sql.str())
     }
 
-    if (db_exec("END TRANSACTION;", "End transaction failed"))
-      return CBSDB_FAILED;
+    EXEC_SQL("END TRANSACTION;")
     sqlite3_close(current_db);
     current_db = NULL;
-    return CBSDB_SUCCESS;
   }
 
 }
 
 namespace CBSDB {
-  int insert_if_solution(const Gecode::IntVarArray& x) {
-    if (current_db == NULL) return CBSDB_NO_ACTION_TAKEN;
-    for (int i=0; i<x.size(); i++)
-      if (!x[i].assigned())
-        return CBSDB_NO_ACTION_TAKEN;
+//  void insert_if_solution(const Gecode::IntVarArray& x) {
+//    DB_ACTIVE_OR_RETURN
+//    for (int i=0; i<x.size(); i++)
+//      if (!x[i].assigned())
+//        return;
+//
+//    CBSDB::new_solution();
+//    for(int i=0; i<x.size(); i++) {
+//      CBSDB::insert_varval_in_solution(x[i].varimp()->id(), x[i].val());
+//    }
+//  }
 
-    int ret = CBSDB::new_solution();
-    if (ret) return ret;
-    for(int i=0; i<x.size(); i++) {
-      ret = CBSDB::insert_varval_in_solution(x[i].varimp()->id(), x[i].val());
-      if (ret) return ret;
-    }
-    return CBSDB_SUCCESS;
-  }
-
-  int insert_if_solution(const Gecode::BoolVarArray& x) {
-    if (current_db == NULL) return CBSDB_NO_ACTION_TAKEN;
-    for (int i=0; i<x.size(); i++)
-      if (!x[i].assigned())
-        return CBSDB_NO_ACTION_TAKEN;
-
-    int ret = CBSDB::new_solution();
-    if (ret) return ret;
-    for(int i=0; i<x.size(); i++) {
-      ret = CBSDB::insert_varval_in_solution(x[i].varimp()->id(), x[i].val());
-      if (ret) return ret;
-    }
-    return CBSDB_SUCCESS;
-  }
+//  void insert_if_solution(const Gecode::BoolVarArray& x) {
+//    DB_ACTIVE_OR_RETURN
+//    for (int i=0; i<x.size(); i++)
+//      if (!x[i].assigned())
+//        return;
+//
+//    int ret = CBSDB::new_solution();
+//    if (ret) return ret;
+//    for(int i=0; i<x.size(); i++) {
+//      ret = CBSDB::insert_varval_in_solution(x[i].varimp()->id(), x[i].val());
+//      if (ret) return ret;
+//    }
+//  }
 }

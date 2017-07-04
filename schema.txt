@@ -2,10 +2,12 @@ TABLE executions
 exec_id uint
 pb_name str
 num_ex uint
+ech_method uint
+max_nb_nodes uint
 branching_name str
 #SQL date DATETIME DEFAULT (DATETIME(CURRENT_TIMESTAMP, 'LOCALTIME')),
 #SQL PRIMARY KEY(exec_id)
-#SQL WITH_ROWID
+#END WITH_ROWID
 
 TABLE results
 exec_id uint
@@ -13,7 +15,7 @@ res_id uint
 var_id uint
 val int
 #SQL PRIMARY KEY(res_id, exec_id, var_idx)
-#SQL WITHOUT_ROWID
+#END WITHOUT_ROWID
 
 #SQL create index results_idx on results (exec_id, res_id, var_idx);
 
@@ -22,7 +24,7 @@ exec_id uint
 node_id uint
 sat uint
 #SQL PRIMARY KEY(exec_id, node_id)
-#SQL WITHOUT_ROWID
+#END WITHOUT_ROWID
 
 #SQL create index nodes_idx on nodes (exec_id, node_id);
 
@@ -32,7 +34,7 @@ node_id uint
 var_id uint
 val int
 #SQL PRIMARY KEY(exec_id, node_id, var_idx)
-#SQL WITHOUT_ROWID
+#END WITHOUT_ROWID
 
 TABLE densities
 exec_id uint
@@ -50,4 +52,4 @@ w_t_avg double
 w_anti_t_avg double
 w_d_avg double
 #SQL PRIMARY KEY(exec_id, node_id, var_idx, val)
-#SQL WITHOUT_ROWID
+#END WITHOUT_ROWID
