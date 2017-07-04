@@ -165,7 +165,7 @@ class BranchingHeuristic : public SolnDistribution {
 public:
   // A choice for branching
   struct Candidate {
-    int idx; // Index of the variable in x
+    unsigned int idx; // Index of the variable in x
     int val; // Value in the domain of the variable
   };
 private:
@@ -285,8 +285,8 @@ class maxSD : public BranchingHeuristic<View> {
   USING_BH
 public:
   virtual Candidate getChoice(Space& home) {
-    struct Best {int var_id; int val; double dens; }
-      best_candidate{-1,0,0};
+    struct Best {unsigned int var_id; int val; double dens; }
+      best_candidate{0,0,0};
 
     for_every_log_entry([&](unsigned int prop_id, double slnCnt,
                             unsigned int var_id, int val, double dens) {
@@ -334,8 +334,8 @@ public:
       prop_count[idx] += 1;
     });
 
-    struct Best { int var_id; int val; double dens_moy;
-    } best_candidate{-1,0,0};
+    struct Best { unsigned int var_id; int val; double dens_moy;
+    } best_candidate{0,0,0};
 
     for_every_varIdx_val(home, [&](unsigned var_id, int val) {
       unsigned int idx = varvalpos(xD,var_id,val);
@@ -344,7 +344,6 @@ public:
         best_candidate = Best{var_id,val,dens_moy};
     });
 
-    assert(best_candidate.var_id != -1);
     return Candidate{xD.positions[best_candidate.var_id],best_candidate.val};
   }
 };
@@ -473,8 +472,8 @@ public:
       wDAvg[idx] = sum_prop_card_prod_x_density[idx] / sum_prop_card_prod[idx];
     });
 
-    struct Best { int var_id; int val; double score;
-    } best_candidate{-1,0,0};
+    struct Best { unsigned int var_id; int val; double score;
+    } best_candidate{0,0,0};
 
 
     #ifdef SQL
@@ -528,7 +527,6 @@ public:
       }
 
     }
-    assert(best_candidate.var_id != -1);
     return Candidate{xD.positions[best_candidate.var_id], best_candidate.val};
   }
 
