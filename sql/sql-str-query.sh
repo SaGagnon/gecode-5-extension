@@ -35,7 +35,7 @@ while read line; do
             var_type=$(echo $line | cut -d" " -f2)
             echo '<< "'$var_name'," '
             if [ "$(echo $strs | grep $var_name)" != "" ]; then
-                cpp_vars+="<< \"'\" << $var_name << \"',\"\n"
+                cpp_vars+="<< \"'\" << s.$var_name << \"',\"\n"
             else
                 cpp_vars+='<< s.'$var_name' << ", "\n'
             fi;

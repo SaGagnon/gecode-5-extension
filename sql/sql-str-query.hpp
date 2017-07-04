@@ -14,11 +14,11 @@ sql
 << "branching_name," 
 << ") values ("
 << s.exec_id << ", "
-<< "'" << pb_name << "',"
+<< "'" << s.pb_name << "',"
 << s.num_ex << ", "
 << s.ech_method << ", "
 << s.max_nb_nodes << ", "
-<< "'" << branching_name << "',"
+<< "'" << s.branching_name << "',"
 << ");";
 return str.str();
 }
