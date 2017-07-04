@@ -175,7 +175,8 @@ main(int argc, char* argv[]) {
   opt.size(0);
   opt.ipl(IPL_DOM);
   opt.solutions(1);
-//  opt.mode(SM_GIST);
+  //opt.c_d(0);
+  //opt.mode(SM_GIST);
 
 
   opt.branching(LatinSquare::BRANCH_CBS_MAX_SD);
