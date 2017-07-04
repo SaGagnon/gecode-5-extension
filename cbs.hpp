@@ -29,6 +29,8 @@
 
 using namespace Gecode;
 
+bool FLAG_GLOBAL_BIDON_FIRST_SOL_FOUND = false;
+
 struct Record { unsigned int var_id; int val; double density; };
 typedef __gnu_cxx::hash_map< unsigned int, std::pair<size_t,Record*>,
   __gnu_cxx::hash<unsigned int>, __gnu_cxx::equal_to<unsigned int>,
@@ -267,6 +269,10 @@ public:
   }
 
   virtual Candidate getChoice(Space& home) = 0;
+  //HACK
+  virtual void __insert_in_bd_before_destruction(Space& home) {}
+
+
 };
 
 #define USING_BH \
@@ -361,7 +367,6 @@ protected:
 
   static double sum_slnCnt_x_dens[SIZE];
   static double sum_slnCnt[SIZE];
-  static double slnCnt[SIZE];
 
   static double maxsd[SIZE];
   static double aAvgSD[SIZE];
@@ -380,8 +385,6 @@ protected:
   static double wDAvg[SIZE];
 public:
   virtual Candidate getChoice(Space& home) {
-    size_t size = (size_t)(xD.size * xD.width);
-
     /// CLEAR
     for (int i=0; i<SIZE; i++) {
       sum_dens[i] = 0;
@@ -389,7 +392,6 @@ public:
       var_dom_size[i] = 0;
       sum_slnCnt_x_dens[i] = 0;
       sum_slnCnt[i] = 0;
-      slnCnt[i] = 0;
       maxsd[i] = 0;
       aAvgSD[i] = 0;
       maxRelSD[i] = 0;
@@ -475,61 +477,64 @@ public:
     struct Best { unsigned int var_id; int val; double score;
     } best_candidate{0,0,0};
 
+    for_every_log_entry([&](unsigned int prop_id, double slnCnt,
+                            unsigned int var_id, int val, double density) {
+      unsigned int idx = varvalpos(xD, var_id, val);
 
-    #ifdef SQL
-    for_every_varIdx_val(home, [&](unsigned int var_id, int val) {
-      unsigned int idx = varvalpos(xD,var_id,val);
-      CBSDB::insert_varval_density_features(
-        var_id, val, maxsd[idx], aAvgSD[idx], var_dom_size[idx], maxRelSD[idx],
-        maxRelRatio[idx], wSCAvg[idx], wAntiSCAvg[idx], wTAvg[idx],
-        wAntiTAvg[idx], wDAvg[idx]);
+
+      double score = aAvgSD[idx];
+//      double score = 1.0 / (1.0 + exp(-_x));
+
+      if (score > best_candidate.score)
+        best_candidate = Best{var_id, val, score};
+
     });
 
-    for (int i=0; i<x.size(); i++)
-      if (x[i].assigned())
-        CBSDB::insert_varval_in_assigned(x[i].varimp()->id(), x[i].val());
-    #endif
 
-    /**
-     * PROP
-     */
-    for (auto prop : (*logDensity)) {
-      unsigned int prop_id = prop.first;
-      double slnCnt = (*logProp)[prop_id].second;
-      size_t nb_records = prop.second.first;
-      Record *records = prop.second.second;
+    return Candidate{xD.positions[best_candidate.var_id], best_candidate.val};
+  }
 
-      /**
-       * (VAR,VAL) in PROP
-       */
-      for (unsigned int i = 0; i < nb_records; ++i) {
-        Record *r = &records[i];
-        unsigned int idx = varvalpos(xD, r->var_id, r->val);
+  //HACK HACK HACK
+  virtual void __insert_in_bd_before_destruction(Space& home) {
+    #ifdef SQL
+    if (!FLAG_GLOBAL_BIDON_FIRST_SOL_FOUND) return;
+    getChoice(home);
+    CBSDB::new_node();
 
-        auto score_varval = [&]() {
-          double _x = 0;
-          _x += 4.8204 * aAvgSD[idx];
-          _x += 8.0080 * maxRelSD[idx];
-          double intercept = -2.6711;
-          _x += intercept;
-          return 1.0 / (1.0 + exp(-_x));
-        };
+    for (int i=0; i<x.size(); i++) {
+      if (x[i].assigned()) continue;
+      if (maxsd[varvalpos(xD, x[i].id(), x[i].min())] == 0) continue;
+      for (Int::ViewValues<View> val(x[i]); val(); ++val) {
+        unsigned int idx = varvalpos(xD, x[i].id(), val.val());
 
-        double score = score_varval();
-
-        if (score > best_candidate.score) {
-          best_candidate = Best{r->var_id,
-                                r->val,
-                                score};
-
-        }
+        CBSDB::densities d;
+        d.var_id = x[i].id();
+        d.val = val.val();
+        d.dens = maxsd[idx];
+        d.a_avg_sd = aAvgSD[idx];
+        d.var_dom_size = (unsigned int)var_dom_size[idx];
+        d.max_rel_sd = maxRelSD[idx];
+        d.max_rel_ratio = maxRelRatio[idx];
+        d.w_sc_avg = wSCAvg[idx];
+        d.w_anti_sc_avg = wAntiSCAvg[idx];
+//        d.w_t_avg = wTAvg[idx];
+//        d.w_anti_t_avg = wAntiTAvg[idx];
+//        d.w_d_avg = wDAvg[idx];
+        CBSDB::insert_varval_density(d);
 
       }
 
     }
-    return Candidate{xD.positions[best_candidate.var_id], best_candidate.val};
+    for (int i=0; i<x.size(); i++)
+      if (x[i].assigned()) {
+        // TODO: HACK il ne faut pas mettre exec_id et node_id...
+        CBSDB::assigned a;
+        a.var_id = x[i].varimp()->id();
+        a.val = x[i].val();
+        CBSDB::insert_varval_in_assigned(a);
+      }
+    #endif
   }
-
 };
 
 //        double x = 0;
@@ -557,7 +562,6 @@ template<class View> int ai<View>::var_dom_size[SIZE]{};
 
 template<class View> double ai<View>::sum_slnCnt_x_dens[SIZE]{};
 template<class View> double ai<View>::sum_slnCnt[SIZE]{};
-template<class View> double ai<View>::slnCnt[SIZE]{};
 
 template<class View> double ai<View>::maxsd[SIZE]{};
 template<class View> double ai<View>::aAvgSD[SIZE]{};
@@ -599,6 +603,15 @@ public:
   }
   virtual size_t dispose(Space& home) {
     home.ignore(*this, AP_DISPOSE);
+
+    //HACK HACK HACK
+    #ifdef SQL
+    heur.set_log_density(&logDensity);
+    heur.set_log_sln_cnt(&logProp);
+    heur.__insert_in_bd_before_destruction(home);
+    #endif
+    //HACK HACK HACK
+
     // ~aAvgSD() calls ~SharedHashMap() which calls ~SharedHashMapObject() to
     // deallocate the hash map when the refcount of SharedHashMapObject is 0
     heur.~BranchingHeur<View>();
@@ -634,9 +647,9 @@ public:
     return false;
   }
   virtual const Choice* choice(Space& home) {
-    #ifdef SQL
-    CBSDB::new_node();
-    #endif
+//    #ifdef SQL
+//    CBSDB::new_node();
+//    #endif
 
     // Active propagators and the size we need for their log.
     // We considere a propagator as "active" only if he supports cbs().

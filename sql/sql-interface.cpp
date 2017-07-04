@@ -103,7 +103,8 @@ namespace CBSDB {
 
     ech_method = s.ech_method;
     max_nb_nodes = s.max_nb_nodes;
-    EXEC_SQL(sql_str_insert_into_executions(s))
+    auto sql = sql_str_insert_into_executions(s);
+    EXEC_SQL(sql)
 
     // ID of the executions we just inserted. Will be used for inserting nodes.
     current_exec_id = sqlite3_last_insert_rowid(current_db);
@@ -120,13 +121,16 @@ namespace CBSDB {
     n.node_id = (unsigned int)current_node_id;
     n.sat = 0;
 
-    EXEC_SQL(sql_str_insert_into_nodes(n))
+    auto sql = sql_str_insert_into_nodes(n);
+    EXEC_SQL(sql)
   }
 
   void insert_varval_density(struct densities& s) {
     DB_ACTIVE_OR_RETURN
     DO_WE_INSERT_OR_RETURN
 
+    s.exec_id = (unsigned int)current_exec_id;
+    s.node_id = (unsigned int)current_node_id;
     EXEC_SQL(sql_str_insert_into_densities(s))
   }
 
@@ -134,7 +138,11 @@ namespace CBSDB {
     DB_ACTIVE_OR_RETURN
     DO_WE_INSERT_OR_RETURN
 
-    EXEC_SQL(sql_str_insert_into_assigned(s))
+    s.exec_id = (unsigned int)current_exec_id;
+    s.node_id = (unsigned int)current_node_id;
+
+    auto sql = sql_str_insert_into_assigned(s);
+    EXEC_SQL(sql)
   }
 
   void new_solution() {
@@ -146,6 +154,9 @@ namespace CBSDB {
   void insert_varval_in_solution(struct results& s) {
     DB_ACTIVE_OR_RETURN
     CURRENT_EXECID_VALID_OR_RETURN
+
+    s.exec_id = (unsigned int)current_exec_id;
+    s.res_id=0; // Temporaire
 
     EXEC_SQL(sql_str_insert_into_results(s))
     solution_found = true;
@@ -168,7 +179,7 @@ namespace CBSDB {
         << "         FROM assigned AS a"
         << "           JOIN results AS r"
         << "             ON a.exec_id = r.exec_id"
-        << "                AND a.var_idx = r.var_idx"
+        << "                AND a.var_id = r.var_id"
         << "                AND a.val = r.val"
         << "                AND r.res_id = 0" //TODO: temporaire
         << "         WHERE a.exec_id = nn.exec_id"
@@ -194,29 +205,37 @@ namespace CBSDB {
 }
 
 namespace CBSDB {
-//  void insert_if_solution(const Gecode::IntVarArray& x) {
-//    DB_ACTIVE_OR_RETURN
-//    for (int i=0; i<x.size(); i++)
-//      if (!x[i].assigned())
-//        return;
-//
-//    CBSDB::new_solution();
-//    for(int i=0; i<x.size(); i++) {
-//      CBSDB::insert_varval_in_solution(x[i].varimp()->id(), x[i].val());
-//    }
-//  }
+  void insert_if_solution(const Gecode::IntVarArray& x) {
+    DB_ACTIVE_OR_RETURN
+    for (int i=0; i<x.size(); i++)
+      if (!x[i].assigned())
+        return;
 
-//  void insert_if_solution(const Gecode::BoolVarArray& x) {
-//    DB_ACTIVE_OR_RETURN
-//    for (int i=0; i<x.size(); i++)
-//      if (!x[i].assigned())
-//        return;
-//
-//    int ret = CBSDB::new_solution();
-//    if (ret) return ret;
-//    for(int i=0; i<x.size(); i++) {
-//      ret = CBSDB::insert_varval_in_solution(x[i].varimp()->id(), x[i].val());
-//      if (ret) return ret;
-//    }
-//  }
+    CBSDB::new_solution();
+    for(int i=0; i<x.size(); i++) {
+      CBSDB::results r;
+      r.var_id = x[i].varimp()->id();
+      r.val = x[i].val();
+      assert(current_result_id != -1);
+      r.res_id = (unsigned int)current_result_id;
+      CBSDB::insert_varval_in_solution(r);
+    }
+  }
+
+  void insert_if_solution(const Gecode::BoolVarArray& x) {
+    DB_ACTIVE_OR_RETURN
+    for (int i=0; i<x.size(); i++)
+      if (!x[i].assigned())
+        return;
+
+    CBSDB::new_solution();
+    for(int i=0; i<x.size(); i++) {
+      CBSDB::results r;
+      r.var_id = x[i].varimp()->id();
+      r.val = x[i].val();
+      assert(current_result_id != -1);
+      r.res_id = (unsigned int)current_result_id;
+      CBSDB::insert_varval_in_solution(r);
+    }
+  }
 }

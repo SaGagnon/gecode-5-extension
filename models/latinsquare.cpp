@@ -120,10 +120,15 @@ public:
 
       // TODO: Mettre une option command line pour activer cette ligne ou non
       #ifdef SQL
-      int ret = CBSDB::start_execution(
-        "latinsquare", opt.size(), "Gecode", CBSDB::FULL, 50000, "aAvgSD",
-                                       "base", "/media/sam/hdd3tb/cbs-scripts"
-                                         "/bd/new_schema_no_prop/cbs.db");
+      CBSDB::executions e;
+      e.pb_name = "latinsquare";
+      e.num_ex = opt.size();
+      e.branching_name = "a_avg_sd";
+      e.ech_method = CBSDB::FULL;
+      e.max_nb_nodes = 10000;
+
+      CBSDB::start_execution(e, "/media/sam/hdd3tb/cbs-scripts"
+        "/bd/autogen/cbs.db");
       #endif
 
       // In case there's no more propagators with include instrumentation
@@ -141,6 +146,10 @@ public:
   }
 
   ~LatinSquare() {
+    for (int i=0; i<x.size(); i++)
+      if (!x[i].assigned())
+        return;
+    FLAG_GLOBAL_BIDON_FIRST_SOL_FOUND = true;
     #ifdef SQL
     CBSDB::insert_if_solution(x);
     #endif
@@ -175,8 +184,8 @@ main(int argc, char* argv[]) {
   opt.size(0);
   opt.ipl(IPL_DOM);
   opt.solutions(1);
-  //opt.c_d(0);
-  //opt.mode(SM_GIST);
+  opt.c_d(0); // Important pour appeler le destructeur de tous les nodes SAT
+//  opt.mode(SM_GIST);
 
 
   opt.branching(LatinSquare::BRANCH_CBS_MAX_SD);

@@ -30,7 +30,7 @@ namespace CBSDB {
 
   /**
    * Insert a new node associated with the current execution. By default, every
-   * new node is considered to be satisfiable node (all the variable assigned
+   * new node is considered to be unsatisfiable (all the variable assigned
    * are part of the solution). We update this information in the method
    * "end_execution".
    */
@@ -60,9 +60,7 @@ namespace CBSDB {
   void insert_varval_in_solution(struct results&);
 
   /**
-   * Close the database. We also update all nodes that contain a pair (var,val)
-   * with a density of 100% which is not part of the solution to be
-   * unsatifiable.
+   * Close the database.
    */
   void end_execution();
 }

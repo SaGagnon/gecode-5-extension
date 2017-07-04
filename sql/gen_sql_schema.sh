@@ -1,33 +1,22 @@
 #!/usr/bin/env zsh
 
-typeset -A types
-types[uint]="INTEGER"
-types[int]="INTEGER"
-types[double]="INTEGER"
-types[str]="TEXT"
+cd "$(dirname "$0")"
 
-while read line; do
-    case $line in
-        TABLE*)
-            table_name=$(echo $line | cut -d" " -f2)
-            echo "create table $table_name("
-            ;;
-        "#END WITH_ROWID")
-            echo ");"
-            ;;
-        "#END WITHOUT_ROWID")
-            echo ") WITHOUT ROWID;"
-            ;;
-        \#SQL*)
-            echo $line | cut -d" " -f2-
-            ;;
-        *" "*)
-            var_name=$(echo $line | cut -d" " -f1)
-            var_type=$(echo $line | cut -d" " -f2)
-            echo $var_name ${types[$var_type]} NOT NULL,
-            ;;
-        "")
-            echo
-            ;;
-    esac
-done < $1
+awk '
+BEGIN   {
+    type["uint"]="INTEGER"
+    type["int"]="INTEGER"
+    type["double"]="INTEGER"
+    type["str"]="TEXT"
+}
+
+/^TABLE/ 	    { print "CREATE TABLE " $2 "(" }
+/^CN|^C|^LC/	{ print $2 " " type[$3] " NOT NULL," }
+
+/^#SQL/         { print }
+
+/^END WITH_ROWID/	    { print ");" }
+/^END WITHOUT_ROWID/    { print ") WITHOUT ROWID;" }
+/^END/				    { printf "\n" }
+
+' <<< $(cat ../schema.txt | grep -v "^//") | sed 's/#SQL //g'

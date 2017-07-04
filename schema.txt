@@ -1,55 +1,59 @@
+// C   Column
+// CL  Last column
+// CN  Column, don't directly insert in database
+
 TABLE executions
-exec_id uint
-pb_name str
-num_ex uint
-ech_method uint
-max_nb_nodes uint
-branching_name str
+CN exec_id uint
+C pb_name str
+C num_ex uint
+C ech_method uint
+C max_nb_nodes uint
+LC branching_name str
 #SQL date DATETIME DEFAULT (DATETIME(CURRENT_TIMESTAMP, 'LOCALTIME')),
 #SQL PRIMARY KEY(exec_id)
-#END WITH_ROWID
+END WITH_ROWID
 
 TABLE results
-exec_id uint
-res_id uint
-var_id uint
-val int
-#SQL PRIMARY KEY(res_id, exec_id, var_idx)
-#END WITHOUT_ROWID
+C exec_id uint
+C res_id uint
+C var_id uint
+LC val int
+#SQL PRIMARY KEY(res_id, exec_id, var_id)
+END WITHOUT_ROWID
 
-#SQL create index results_idx on results (exec_id, res_id, var_idx);
+#SQL create index results_id on results (exec_id, res_id, var_id);
 
 TABLE nodes
-exec_id uint
-node_id uint
-sat uint
+C exec_id uint
+C node_id uint
+LC sat uint
 #SQL PRIMARY KEY(exec_id, node_id)
-#END WITHOUT_ROWID
+END WITHOUT_ROWID
 
 #SQL create index nodes_idx on nodes (exec_id, node_id);
 
 TABLE assigned
-exec_id uint
-node_id uint
-var_id uint
-val int
-#SQL PRIMARY KEY(exec_id, node_id, var_idx)
-#END WITHOUT_ROWID
+C exec_id uint
+C node_id uint
+C var_id uint
+LC val int #LAST_COL
+#SQL PRIMARY KEY(exec_id, node_id, var_id)
+END WITHOUT_ROWID
 
 TABLE densities
-exec_id uint
-node_id uint
-var_id uint
-val int
-dens double
-a_avg_sd double
-var_dom_size uint
-max_rel_sd double
-max_rel_ratio double
-w_sc_avg double
-w_anti_sc_avg double
-w_t_avg double
-w_anti_t_avg double
-w_d_avg double
-#SQL PRIMARY KEY(exec_id, node_id, var_idx, val)
-#END WITHOUT_ROWID
+C exec_id uint
+C node_id uint
+C var_id uint
+C val int
+C dens double
+C a_avg_sd double
+C var_dom_size uint
+C max_rel_sd double
+C max_rel_ratio double
+C w_sc_avg double
+LC w_anti_sc_avg double
+//C w_t_avg double
+//C w_anti_t_avg double
+//LC w_d_avg double #LAST_COL
+#SQL PRIMARY KEY(exec_id, node_id, var_id, val)
+END WITHOUT_ROWID
