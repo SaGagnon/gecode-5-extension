@@ -37,7 +37,7 @@ set(EXAMPLES
 #)
 
 set(SQL_SRC "")
-option(BUILD_SQL "Build SQLite profiling." ON)
+option(BUILD_SQL "Build SQLite profiling." OFF)
 if(${BUILD_SQL})
     find_package(Threads REQUIRED)
     include_directories(sql)

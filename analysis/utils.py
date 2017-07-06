@@ -1,9 +1,10 @@
 
 #%load /home/sam/gecode-5.0.0-extension/analysis/utils.py
-#%%write /home/sam/gecode-5.0.0-extension/analysis/utils.py
+#%%writefile /home/sam/gecode-5.0.0-extension/analysis/utils.py
 import math
 import matplotlib.pyplot as plt
 import seaborn as sns
+%matplotlib inline
 
 def get_node_in_exs(exs, path_db):
     req_sql = """
@@ -30,20 +31,10 @@ def get_node_in_exs(exs, path_db):
         )
     return df
 
-# REPETITION
 features_subset = [
- ('dens', 'maxsd[idx]'),
- ('a_avg_sd', 'aAvgSD[idx]'),
- ('var_dom_size', 'var_dom_size[idx]'),
- ('max_rel_sd', 'maxRelSD[idx]'),
- ('max_rel_ratio', 'maxRelRatio[idx]'),
- ('w_sc_avg', 'wSCAvg[idx]'),
- ('w_anti_sc_avg', 'wAntiSCAvg[idx]'),
- ('w_t_avg', 'wTAvg[idx]'),
- ('w_anti_t_avg', 'wAntiTAvg[idx]'),
- ('w_d_avg', 'wDAvg[idx]')
+    "max_sd",
+    "a_avg_sd"
 ]
-# REPETITION
 
 def plot_features_sln_sep(features):
     width = 3

@@ -390,7 +390,6 @@ public:
     for (int i=0; i<SIZE; i++) {
       sum_dens[i] = 0;
       nb_prop[i] = 0;
-      var_dom_size[i] = 0;
 //      sum_slnCnt_x_dens[i] = 0;
 //      sum_slnCnt[i] = 0;
 
@@ -483,8 +482,11 @@ public:
       unsigned int idx = varvalpos(xD, var_id, val);
 
 
-      double score = a_avg_sd[idx];
-//      double score = 1.0 / (1.0 + exp(-_x));
+      double _x = 0;
+      _x += 5.27167258 * a_avg_sd[idx];
+      _x += 5.13028758 * max_rel_sd[idx];
+      _x += -2.62892261;
+      double score = 1.0 / (1.0 + exp(-_x));
 
       if (score > best_candidate.score)
         best_candidate = Best{var_id, val, score};

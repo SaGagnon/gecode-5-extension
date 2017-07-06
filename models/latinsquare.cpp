@@ -184,7 +184,7 @@ main(int argc, char* argv[]) {
   opt.size(0);
   opt.ipl(IPL_DOM);
   opt.solutions(1);
-  opt.c_d(0); // Important pour appeler le destructeur de tous les nodes SAT
+//  opt.c_d(0); // Important pour appeler le destructeur de tous les nodes SAT
 //  opt.mode(SM_GIST);
 
 
