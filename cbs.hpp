@@ -31,6 +31,10 @@ using namespace Gecode;
 
 bool FLAG_GLOBAL_BIDON_FIRST_SOL_FOUND = false;
 
+double a_avg_sd_VALUE;
+double max_rel_sd_VALUE;
+double intercept_VALUE;
+
 struct Record { unsigned int var_id; int val; double density; };
 typedef __gnu_cxx::hash_map< unsigned int, std::pair<size_t,Record*>,
   __gnu_cxx::hash<unsigned int>, __gnu_cxx::equal_to<unsigned int>,
@@ -483,9 +487,9 @@ public:
 
 
       double _x = 0;
-      _x += 5.27167258 * a_avg_sd[idx];
-      _x += 5.13028758 * max_rel_sd[idx];
-      _x += -2.62892261;
+      _x +=  a_avg_sd_VALUE * a_avg_sd[idx];
+      _x += max_rel_sd_VALUE * max_rel_sd[idx];
+      _x += intercept_VALUE;
       double score = 1.0 / (1.0 + exp(-_x));
 
       if (score > best_candidate.score)

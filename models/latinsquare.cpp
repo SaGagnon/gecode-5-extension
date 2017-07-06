@@ -187,6 +187,17 @@ main(int argc, char* argv[]) {
 //  opt.c_d(0); // Important pour appeler le destructeur de tous les nodes SAT
 //  opt.mode(SM_GIST);
 
+  Driver::DoubleOption a_avg_sd("-a_avg_sd", "", 1);
+  a_avg_sd.parse(argc,argv);
+  a_avg_sd_VALUE = a_avg_sd.value();
+
+  Driver::DoubleOption max_rel_sd("-max_rel_sd", "", 0);
+  max_rel_sd.parse(argc,argv);
+  max_rel_sd_VALUE = max_rel_sd.value();
+
+  Driver::DoubleOption intercept("-intercept", "", 0);
+  intercept.parse(argc,argv);
+  intercept_VALUE = intercept.value();
 
   opt.branching(LatinSquare::BRANCH_CBS_MAX_SD);
   opt.branching(LatinSquare::BRANCH_NONE, "none", "Branch on rows/columns in order");
