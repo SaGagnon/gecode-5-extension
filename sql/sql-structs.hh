@@ -38,13 +38,11 @@ namespace CBSDB {
     unsigned int node_id;
     unsigned int var_id;
     int val;
-    double dens;
+    double max_sd;
     double a_avg_sd;
     unsigned int var_dom_size;
     double max_rel_sd;
     double max_rel_ratio;
-    double w_sc_avg;
-    double w_anti_sc_avg;
   };
 
 

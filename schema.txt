@@ -45,13 +45,13 @@ C exec_id uint
 C node_id uint
 C var_id uint
 C val int
-C dens double
+C max_sd double
 C a_avg_sd double
 C var_dom_size uint
 C max_rel_sd double
-C max_rel_ratio double
-C w_sc_avg double
-LC w_anti_sc_avg double
+LC max_rel_ratio double
+// C w_sc_avg double
+// C w_anti_sc_avg double
 //C w_t_avg double
 //C w_anti_t_avg double
 //LC w_d_avg double #LAST_COL
