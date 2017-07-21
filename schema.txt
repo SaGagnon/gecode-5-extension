@@ -6,8 +6,6 @@ TABLE executions
 CN exec_id uint
 C pb_name str
 C num_ex uint
-C ech_method uint
-C max_nb_nodes uint
 LC branching_name str
 #SQL date DATETIME DEFAULT (DATETIME(CURRENT_TIMESTAMP, 'LOCALTIME')),
 #SQL PRIMARY KEY(exec_id)
@@ -15,7 +13,6 @@ END WITH_ROWID
 
 TABLE results
 C exec_id uint
-C res_id uint
 C var_id uint
 LC val int
 #SQL PRIMARY KEY(res_id, exec_id, var_id)
@@ -25,19 +22,17 @@ END WITHOUT_ROWID
 
 TABLE nodes
 C exec_id uint
-C node_id uint
-LC sat uint
+LC node_id uint
 #SQL PRIMARY KEY(exec_id, node_id)
 END WITHOUT_ROWID
 
 #SQL create index nodes_idx on nodes (exec_id, node_id);
 
-TABLE assigned
+TABLE propagators
 C exec_id uint
 C node_id uint
-C var_id uint
-LC val int #LAST_COL
-#SQL PRIMARY KEY(exec_id, node_id, var_id)
+LC prop_id uint
+#SQL PRIMARY KEY(exec_id, node_id, prop_id)
 END WITHOUT_ROWID
 
 TABLE densities

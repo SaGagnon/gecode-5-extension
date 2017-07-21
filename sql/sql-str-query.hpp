@@ -7,14 +7,10 @@ std::stringstream sql;
 sql << "insert into executions ("
 << "pb_name,"
 << "num_ex,"
-<< "ech_method,"
-<< "max_nb_nodes,"
 << "branching_name"
 << ") values ("
 << "'" << s.pb_name << "'" << ","
 << s.num_ex << ","
-<< s.ech_method << ","
-<< s.max_nb_nodes << ","
 << "'" << s.branching_name << "'" << ");";
 return sql.str();
 }
@@ -22,12 +18,10 @@ std::string sql_str_insert_into_results(struct results& s) {
 std::stringstream sql;
 sql << "insert into results ("
 << "exec_id,"
-<< "res_id,"
 << "var_id,"
 << "val"
 << ") values ("
 << s.exec_id << ","
-<< s.res_id << ","
 << s.var_id << ","
 << s.val << ");";
 return sql.str();
@@ -36,26 +30,22 @@ std::string sql_str_insert_into_nodes(struct nodes& s) {
 std::stringstream sql;
 sql << "insert into nodes ("
 << "exec_id,"
-<< "node_id,"
-<< "sat"
+<< "node_id"
 << ") values ("
 << s.exec_id << ","
-<< s.node_id << ","
-<< s.sat << ");";
+<< s.node_id << ");";
 return sql.str();
 }
-std::string sql_str_insert_into_assigned(struct assigned& s) {
+std::string sql_str_insert_into_propagators(struct propagators& s) {
 std::stringstream sql;
-sql << "insert into assigned ("
+sql << "insert into propagators ("
 << "exec_id,"
 << "node_id,"
-<< "var_id,"
-<< "val"
+<< "prop_id"
 << ") values ("
 << s.exec_id << ","
 << s.node_id << ","
-<< s.var_id << ","
-<< s.val << ");";
+<< s.prop_id << ");";
 return sql.str();
 }
 std::string sql_str_insert_into_densities(struct densities& s) {

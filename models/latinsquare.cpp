@@ -124,8 +124,6 @@ public:
       e.pb_name = "latinsquare";
       e.num_ex = opt.size();
       e.branching_name = "a_avg_sd";
-      e.ech_method = CBSDB::FULL;
-      e.max_nb_nodes = 10000;
 
       CBSDB::start_execution(e, "/media/sam/hdd3tb/cbs-scripts"
         "/bd/autogen/cbs.db");
@@ -146,10 +144,6 @@ public:
   }
 
   ~LatinSquare() {
-    for (int i=0; i<x.size(); i++)
-      if (!x[i].assigned())
-        return;
-    FLAG_GLOBAL_BIDON_FIRST_SOL_FOUND = true;
     #ifdef SQL
     CBSDB::insert_if_solution(x);
     #endif
@@ -198,10 +192,6 @@ main(int argc, char* argv[]) {
     else if (txt == "-intercept")
       intercept_VALUE = std::stod(argv[i+1]);
   }
-
-  std::cout << a_avg_sd_VALUE << std::endl;
-  std::cout << max_rel_sd_VALUE << std::endl;
-  std::cout << intercept_VALUE << std::endl;
 
   opt.branching(LatinSquare::BRANCH_CBS_MAX_SD);
   opt.branching(LatinSquare::BRANCH_NONE, "none", "Branch on rows/columns in order");

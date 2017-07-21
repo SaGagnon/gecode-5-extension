@@ -29,8 +29,6 @@
 
 using namespace Gecode;
 
-bool FLAG_GLOBAL_BIDON_FIRST_SOL_FOUND = false;
-
 double a_avg_sd_VALUE;
 double max_rel_sd_VALUE;
 double intercept_VALUE;
@@ -273,10 +271,6 @@ public:
   }
 
   virtual Candidate getChoice(Space& home) = 0;
-  //HACK
-  virtual void __insert_in_bd_before_destruction(Space& home) {}
-
-
 };
 
 #define USING_BH \
@@ -485,9 +479,19 @@ public:
                             unsigned int var_id, int val, double density) {
       unsigned int idx = varvalpos(xD, var_id, val);
 
+      CBSDB::densities d;
+      d.var_id = var_id;
+      d.val = val;
+      d.max_sd = max_sd[idx];
+      d.a_avg_sd = a_avg_sd[idx];
+      d.var_dom_size = (unsigned int)var_dom_size[idx];
+      d.max_rel_sd = max_rel_sd[idx];
+      d.max_rel_ratio = max_rel_ratio[idx];
+      CBSDB::insert_varval_density(d);
+
 
       double _x = 0;
-      _x +=  a_avg_sd_VALUE * a_avg_sd[idx];
+      _x += a_avg_sd_VALUE * a_avg_sd[idx];
       _x += max_rel_sd_VALUE * max_rel_sd[idx];
       _x += intercept_VALUE;
       double score = 1.0 / (1.0 + exp(-_x));
@@ -501,47 +505,6 @@ public:
     return Candidate{xD.positions[best_candidate.var_id], best_candidate.val};
   }
 
-  //HACK HACK HACK
-  virtual void __insert_in_bd_before_destruction(Space& home) {
-    #ifdef SQL
-    if (!FLAG_GLOBAL_BIDON_FIRST_SOL_FOUND) return;
-    getChoice(home);
-    CBSDB::new_node();
-
-    for (int i=0; i<x.size(); i++) {
-      if (x[i].assigned()) continue;
-      if (max_sd[varvalpos(xD, x[i].id(), x[i].min())] == 0) continue;
-      for (Int::ViewValues<View> val(x[i]); val(); ++val) {
-        unsigned int idx = varvalpos(xD, x[i].id(), val.val());
-
-        CBSDB::densities d;
-        d.var_id = x[i].id();
-        d.val = val.val();
-        d.max_sd = max_sd[idx];
-        d.a_avg_sd = a_avg_sd[idx];
-        d.var_dom_size = (unsigned int)var_dom_size[idx];
-        d.max_rel_sd = max_rel_sd[idx];
-        d.max_rel_ratio = max_rel_ratio[idx];
-//        d.w_sc_avg = w_sc_avg[idx];
-//        d.w_anti_sc_avg = w_anti_sc_avg[idx];
-//        d.w_t_avg = wTAvg[idx];
-//        d.w_anti_t_avg = wAntiTAvg[idx];
-//        d.w_d_avg = wDAvg[idx];
-        CBSDB::insert_varval_density(d);
-
-      }
-
-    }
-    for (int i=0; i<x.size(); i++)
-      if (x[i].assigned()) {
-        // TODO: HACK il ne faut pas mettre exec_id et node_id...
-        CBSDB::assigned a;
-        a.var_id = x[i].varimp()->id();
-        a.val = x[i].val();
-        CBSDB::insert_varval_in_assigned(a);
-      }
-    #endif
-  }
 };
 
 template<class View> double ai<View>::max_sd[SIZE]{};
@@ -593,15 +556,6 @@ public:
   }
   virtual size_t dispose(Space& home) {
     home.ignore(*this, AP_DISPOSE);
-
-    //HACK HACK HACK
-    #ifdef SQL
-    heur.set_log_density(&logDensity);
-    heur.set_log_sln_cnt(&logProp);
-    heur.__insert_in_bd_before_destruction(home);
-    #endif
-    //HACK HACK HACK
-
     // ~aAvgSD() calls ~SharedHashMap() which calls ~SharedHashMapObject() to
     // deallocate the hash map when the refcount of SharedHashMapObject is 0
     heur.~BranchingHeur<View>();

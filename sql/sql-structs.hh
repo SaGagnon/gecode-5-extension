@@ -8,14 +8,11 @@ namespace CBSDB {
   struct executions {
     std::string pb_name;
     unsigned int num_ex;
-    unsigned int ech_method;
-    unsigned int max_nb_nodes;
     std::string branching_name;
   };
 
   struct results {
     unsigned int exec_id;
-    unsigned int res_id;
     unsigned int var_id;
     int val;
   };
@@ -23,14 +20,12 @@ namespace CBSDB {
   struct nodes {
     unsigned int exec_id;
     unsigned int node_id;
-    unsigned int sat;
   };
 
-  struct assigned {
+  struct propagators {
     unsigned int exec_id;
     unsigned int node_id;
-    unsigned int var_id;
-    int val;
+    unsigned int prop_id;
   };
 
   struct densities {

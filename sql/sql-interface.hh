@@ -12,14 +12,6 @@
  */
 namespace CBSDB {
 
-  enum EchMethod {
-    FULL,
-    ECH10,
-    ECH100,
-    ECH1000,
-    NB_ECH_METHOD
-  };
-
   /**
    * This function must be called first before the solver begins to solve its
    * model. Its role is to connect to the database and insert a new execution
@@ -41,13 +33,6 @@ namespace CBSDB {
    * table.
    */
   void insert_varval_density(struct densities&);
-
-
-  /**
-   * Insert a new (var,val) pair associated with the current node in assigned
-   * table.
-   */
-  void insert_varval_in_assigned(struct assigned&);
 
   /**
    * Create a new solution linked to the current execution.

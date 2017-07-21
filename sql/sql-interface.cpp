@@ -34,25 +34,6 @@ namespace CBSDB {
   /*****************************************************************************
    * HELPER METHODS
    ****************************************************************************/
-  bool do_we_insert() {
-    if (current_node_id >= max_nb_nodes)
-      return false;
-
-    switch (ech_method) {
-      case FULL:
-        return true;
-      case ECH10:
-        return current_node_id % 10 == 0;
-      case ECH100:
-        return current_node_id % 100 == 0;
-      case ECH1000:
-        return current_node_id % 1000 == 0;
-      default:
-        assert(false);
-    }
-    assert(false);
-  }
-
 
   bool db_exec(std::string sql_statement) {
     char *errMsg;
@@ -82,8 +63,6 @@ namespace CBSDB {
     return; \
   }
 
-#define DO_WE_INSERT_OR_RETURN if(!do_we_insert()) return;
-
   /*****************************************************************************
    * IMPLEMENTATION
    ****************************************************************************/
@@ -94,15 +73,8 @@ namespace CBSDB {
       return;
     }
 
-    if (s.ech_method < 0 || s.ech_method >= NB_ECH_METHOD) {
-      std::cout << "Sampling method not valid." << std::endl;
-      return;
-    }
-
     EXEC_SQL("BEGIN TRANSACTION;")
 
-    ech_method = s.ech_method;
-    max_nb_nodes = s.max_nb_nodes;
     auto sql = sql_str_insert_into_executions(s);
     EXEC_SQL(sql)
 
@@ -113,13 +85,11 @@ namespace CBSDB {
   void new_node() {
     DB_ACTIVE_OR_RETURN
     current_node_id++;
-    DO_WE_INSERT_OR_RETURN
     CURRENT_EXECID_VALID_OR_RETURN
 
     nodes n;
     n.exec_id = (unsigned int)current_exec_id;
     n.node_id = (unsigned int)current_node_id;
-    n.sat = 0;
 
     auto sql = sql_str_insert_into_nodes(n);
     EXEC_SQL(sql)
@@ -127,22 +97,10 @@ namespace CBSDB {
 
   void insert_varval_density(struct densities& s) {
     DB_ACTIVE_OR_RETURN
-    DO_WE_INSERT_OR_RETURN
 
     s.exec_id = (unsigned int)current_exec_id;
     s.node_id = (unsigned int)current_node_id;
     EXEC_SQL(sql_str_insert_into_densities(s))
-  }
-
-  void insert_varval_in_assigned(struct assigned& s) {
-    DB_ACTIVE_OR_RETURN
-    DO_WE_INSERT_OR_RETURN
-
-    s.exec_id = (unsigned int)current_exec_id;
-    s.node_id = (unsigned int)current_node_id;
-
-    auto sql = sql_str_insert_into_assigned(s);
-    EXEC_SQL(sql)
   }
 
   void new_solution() {
@@ -156,7 +114,6 @@ namespace CBSDB {
     CURRENT_EXECID_VALID_OR_RETURN
 
     s.exec_id = (unsigned int)current_exec_id;
-    s.res_id=0; // Temporaire
 
     EXEC_SQL(sql_str_insert_into_results(s))
     solution_found = true;
@@ -217,7 +174,6 @@ namespace CBSDB {
       r.var_id = x[i].varimp()->id();
       r.val = x[i].val();
       assert(current_result_id != -1);
-      r.res_id = (unsigned int)current_result_id;
       CBSDB::insert_varval_in_solution(r);
     }
   }
@@ -234,7 +190,6 @@ namespace CBSDB {
       r.var_id = x[i].varimp()->id();
       r.val = x[i].val();
       assert(current_result_id != -1);
-      r.res_id = (unsigned int)current_result_id;
       CBSDB::insert_varval_in_solution(r);
     }
   }
