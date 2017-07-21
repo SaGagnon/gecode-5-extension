@@ -9,6 +9,7 @@ namespace CBSDB {
     std::string pb_name;
     unsigned int num_ex;
     std::string branching_name;
+    std::string path_db;
   };
 
   struct results {

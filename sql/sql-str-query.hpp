@@ -7,11 +7,13 @@ std::stringstream sql;
 sql << "insert into executions ("
 << "pb_name,"
 << "num_ex,"
-<< "branching_name"
+<< "branching_name,"
+<< "path_db"
 << ") values ("
 << "'" << s.pb_name << "'" << ","
 << s.num_ex << ","
-<< "'" << s.branching_name << "'" << ");";
+<< "'" << s.branching_name << "'" << ","
+<< "'" << s.path_db << "'" << ");";
 return sql.str();
 }
 std::string sql_str_insert_into_results(struct results& s) {

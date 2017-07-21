@@ -18,7 +18,7 @@ namespace CBSDB {
    * label in the database. The database must have been previously initialized
    * with the correct tables.
    */
-  void start_execution(struct executions&, std::string path_to_db);
+  void start_execution(struct executions&);
 
   /**
    * Insert a new node associated with the current execution. By default, every

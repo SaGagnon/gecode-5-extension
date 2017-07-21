@@ -6,7 +6,8 @@ TABLE executions
 CN exec_id uint
 C pb_name str
 C num_ex uint
-LC branching_name str
+C branching_name str
+LC path_db str
 #SQL date DATETIME DEFAULT (DATETIME(CURRENT_TIMESTAMP, 'LOCALTIME')),
 #SQL PRIMARY KEY(exec_id)
 END WITH_ROWID
@@ -15,10 +16,10 @@ TABLE results
 C exec_id uint
 C var_id uint
 LC val int
-#SQL PRIMARY KEY(res_id, exec_id, var_id)
+#SQL PRIMARY KEY(exec_id, var_id)
 END WITHOUT_ROWID
 
-#SQL create index results_id on results (exec_id, res_id, var_id);
+#SQL create index results_id on results (exec_id, var_id);
 
 TABLE nodes
 C exec_id uint

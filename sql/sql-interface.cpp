@@ -67,8 +67,8 @@ namespace CBSDB {
    * IMPLEMENTATION
    ****************************************************************************/
 
-  void start_execution(struct executions& s, std::string path_to_db) {
-    if (sqlite3_open(path_to_db.c_str(), &current_db) != SQLITE_OK) {
+  void start_execution(struct executions& s) {
+    if (sqlite3_open(s.path_db.c_str(), &current_db) != SQLITE_OK) {
       std::cout << "Error in opening database" << std::endl;
       return;
     }
