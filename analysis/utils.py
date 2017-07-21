@@ -1,9 +1,13 @@
 
 #%load /home/sam/gecode-5.0.0-extension/analysis/utils.py
 #%%writefile /home/sam/gecode-5.0.0-extension/analysis/utils.py
+from sklearn.linear_model import LogisticRegressionCV
+
 import math
 import matplotlib.pyplot as plt
 import seaborn as sns
+import pandas as pd
+from io import StringIO
 %matplotlib inline
 
 def get_node_in_exs(exs, path_db):
@@ -29,6 +33,46 @@ def get_node_in_exs(exs, path_db):
                 index_col=['exec_id','node_id','var_id','val']
             )
         )
+    return df
+
+def get_node_in_exs_old_db(exs, path_db, sat=True):
+    req_sql = """
+        SELECT d.*,
+          n.sat,
+          CASE WHEN r.exec_id IS NOT NULL THEN 1 ELSE 0 END as in_sol
+        FROM densities AS d
+        JOIN nodes AS n
+          ON d.exec_id=n.exec_id
+          AND d.node_id=n.node_id
+          $1
+        LEFT JOIN results AS r
+          ON d.exec_id=r.exec_id
+          AND d.var_idx=r.var_idx
+          AND d.val=r.val
+          AND r.res_id=0 -- TEMPORAIRE
+        WHERE d.exec_id = $2
+           AND EXISTS (
+             SELECT exec_id
+             FROM results as rr
+             WHERE rr.exec_id = $2
+        );
+    """
+    
+    if sat:
+        req_sql = req_sql.replace('$1',"AND n.sat=1")
+        
+    df = pd.DataFrame()
+    for ex in exs:
+        req_sql_ex = req_sql.replace('$2', str(ex))
+        output = !sqlite3 -header -csv {path_db} "{req_sql_ex}"
+        if len(output) == 0:continue
+        df = df.append(
+            pd.read_csv(
+                StringIO(output.n),
+                index_col=['exec_id','node_id','prop_id','var_idx','val']
+            )
+        )
+        
     return df
 
 features_subset = [

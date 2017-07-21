@@ -178,6 +178,8 @@ public:
 
 };
 
+
+
 int
 main(int argc, char* argv[]) {
   SizeOptions opt("Latin Square");
@@ -187,17 +189,19 @@ main(int argc, char* argv[]) {
 //  opt.c_d(0); // Important pour appeler le destructeur de tous les nodes SAT
 //  opt.mode(SM_GIST);
 
-  Driver::DoubleOption a_avg_sd("-a_avg_sd", "", 1);
-  a_avg_sd.parse(argc,argv);
-  a_avg_sd_VALUE = a_avg_sd.value();
+  for (int i=0; i<argc; i++) {
+    std::string txt(argv[i]);
+    if (txt == "-a_avg_sd")
+      a_avg_sd_VALUE = std::stod(argv[i+1]);
+    else if (txt == "-max_rel_sd")
+      max_rel_sd_VALUE = std::stod(argv[i+1]);
+    else if (txt == "-intercept")
+      intercept_VALUE = std::stod(argv[i+1]);
+  }
 
-  Driver::DoubleOption max_rel_sd("-max_rel_sd", "", 0);
-  max_rel_sd.parse(argc,argv);
-  max_rel_sd_VALUE = max_rel_sd.value();
-
-  Driver::DoubleOption intercept("-intercept", "", 0);
-  intercept.parse(argc,argv);
-  intercept_VALUE = intercept.value();
+  std::cout << a_avg_sd_VALUE << std::endl;
+  std::cout << max_rel_sd_VALUE << std::endl;
+  std::cout << intercept_VALUE << std::endl;
 
   opt.branching(LatinSquare::BRANCH_CBS_MAX_SD);
   opt.branching(LatinSquare::BRANCH_NONE, "none", "Branch on rows/columns in order");
@@ -213,6 +217,8 @@ main(int argc, char* argv[]) {
   opt.branching(LatinSquare::BRANCH_CBS_W_SC_AVG, "cbs_w_sc_avg", "wSCAvg counting base search");
   opt.branching(LatinSquare::BRANCH_CBS_AI, "cbs_ai", "Experimental");
   opt.parse(argc,argv);
+
+
 
   if (opt.size() >= n_examples) {
     std::cerr << "Error: size must be between 0 and " << n_examples-1
