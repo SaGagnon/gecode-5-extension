@@ -122,37 +122,7 @@ namespace CBSDB {
   void end_execution() {
     DB_ACTIVE_OR_RETURN
 
-    // We find unsatifiable nodes and update them in the database.
-    if(solution_found) {
-      std::stringstream sql;
-      sql << " UPDATE nodes SET sat = 1"
-          << " WHERE exec_id = " << current_exec_id
-          << " AND node_id IN ("
-
-        << " SELECT nn.node_id"
-        << " FROM nodes AS nn"
-        << " WHERE"
-        << "       ( SELECT count(*)"
-        << "         FROM assigned AS a"
-        << "           JOIN results AS r"
-        << "             ON a.exec_id = r.exec_id"
-        << "                AND a.var_id = r.var_id"
-        << "                AND a.val = r.val"
-        << "                AND r.res_id = 0" //TODO: temporaire
-        << "         WHERE a.exec_id = nn.exec_id"
-        << "               AND a.node_id = nn.node_id"
-        << "       ) == ("
-        << "         SELECT count(*)"
-        << "         FROM assigned AS a"
-        << "         WHERE a.exec_id = nn.exec_id"
-        << "               AND a.node_id = nn.node_id"
-        << "       )"
-        << " AND nn.exec_id = " << current_exec_id
-
-        << ");";
-
-      EXEC_SQL(sql.str())
-    }
+    // TODO:
 
     EXEC_SQL("END TRANSACTION;")
     sqlite3_close(current_db);
