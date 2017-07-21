@@ -2,12 +2,15 @@
 // CL  Last column
 // CN  Column, don't directly insert in database
 
+// type 1: We only find the solution to the problem
+// type 2: We insert nodes given the solutions
+
 TABLE executions
 CN exec_id uint
+C single_sol_found uint
+C nodes_inserted uint
 C pb_name str
 C num_ex uint
-C ech_method uint
-C max_nb_nodes uint
 LC branching_name str
 #SQL date DATETIME DEFAULT (DATETIME(CURRENT_TIMESTAMP, 'LOCALTIME')),
 #SQL PRIMARY KEY(exec_id)
@@ -15,34 +18,32 @@ END WITH_ROWID
 
 TABLE results
 C exec_id uint
-C res_id uint
 C var_id uint
 LC val int
-#SQL PRIMARY KEY(res_id, exec_id, var_id)
+#SQL PRIMARY KEY(exec_id, var_id)
 END WITHOUT_ROWID
 
-#SQL create index results_id on results (exec_id, res_id, var_id);
+#SQL create index results_id on results (exec_id, var_id);
 
 TABLE nodes
 C exec_id uint
-C node_id uint
-LC sat uint
+LC node_id uint
 #SQL PRIMARY KEY(exec_id, node_id)
 END WITHOUT_ROWID
 
 #SQL create index nodes_idx on nodes (exec_id, node_id);
 
-TABLE assigned
+TABLE propagators
 C exec_id uint
 C node_id uint
-C var_id uint
-LC val int #LAST_COL
-#SQL PRIMARY KEY(exec_id, node_id, var_id)
+LC prop_id uint
+#SQL PRIMARY KEY(exec_id, node_id, prop_id)
 END WITHOUT_ROWID
 
 TABLE densities
 C exec_id uint
 C node_id uint
+C prop_id uint
 C var_id uint
 C val int
 C max_sd double
@@ -55,5 +56,5 @@ LC max_rel_ratio double
 //C w_t_avg double
 //C w_anti_t_avg double
 //LC w_d_avg double #LAST_COL
-#SQL PRIMARY KEY(exec_id, node_id, var_id, val)
+#SQL PRIMARY KEY(exec_id, node_id, prop_id, var_id, val)
 END WITHOUT_ROWID

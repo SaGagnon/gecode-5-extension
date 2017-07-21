@@ -12,7 +12,7 @@ namespace CBSDB {
 awk '
 /^TABLE/ {
     cpp=""
-    print "std::string sql_str_insert_into_" $2 "(struct " $2 "& s) {" 
+    print "std::string sql_str_insert_into_" $2 "(const struct " $2 "&& s) {" 
     print "std::stringstream sql;"
     print "sql << \"insert into " $2 " (\""
 }

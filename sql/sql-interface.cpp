@@ -6,6 +6,7 @@
 #include <sstream>
 #include <cassert>
 #include <cmath>
+#include <unordered_map>
 
 #include "sql-str-query.hpp"
 
@@ -20,222 +21,198 @@ namespace CBSDB {
    ****************************************************************************/
   const int INVALID = -1;
 
-  sqlite3 *current_db = NULL;
-  unsigned int ech_method;
+  sqlite3 *current_db = nullptr;
 
   sqlite3_int64 current_exec_id = INVALID;
   int current_node_id = INVALID;
-  int current_result_id = INVALID;
 
-  bool solution_found = false;
+  EXEC_TYPE exec_type = EXEC_TYPE::INVALID_EXEC;
 
-  unsigned int max_nb_nodes;
+  bool unique_sol_found = false;
+
+  std::unordered_map<unsigned int, int> correctVal;
+
 
   /*****************************************************************************
    * HELPER METHODS
    ****************************************************************************/
-  bool do_we_insert() {
-    if (current_node_id >= max_nb_nodes)
-      return false;
 
-    switch (ech_method) {
-      case FULL:
-        return true;
-      case ECH10:
-        return current_node_id % 10 == 0;
-      case ECH100:
-        return current_node_id % 100 == 0;
-      case ECH1000:
-        return current_node_id % 1000 == 0;
-      default:
-        assert(false);
-    }
-    assert(false);
+  bool db_active() {
+    return current_db != nullptr;
   }
 
+  bool insertion_exec_type() {
+    assert(exec_type != EXEC_TYPE::INVALID_EXEC);
+    return exec_type == EXEC_TYPE::INSERT_INTO_DB;
+  }
 
-  bool db_exec(std::string sql_statement) {
+  bool get_uniq_sol_exec_type() {
+    assert(exec_type != EXEC_TYPE::INVALID_EXEC);
+    return exec_type == EXEC_TYPE::GET_UNIQUE_SOLUTION;
+  }
+
+  void set_uniq_sol_found(bool b) {
+    unique_sol_found = b;
+  }
+
+  void exit_on_error(const std::string& err = "");
+
+  void db_exec(const std::string& sql_statement,
+               int (*callback)(void*,int,char**,char**) = nullptr,
+               void *first_arg_callback = nullptr) {
     char *errMsg;
     if (sqlite3_exec(current_db, sql_statement.c_str(),
-                     NULL, NULL, &errMsg) != SQLITE_OK) {
-      std::cout << sql_statement;
+                     callback, first_arg_callback, &errMsg) != SQLITE_OK) {
+      std::cout << sql_statement << std::endl;
       std::cout << "err: " << errMsg << std::endl;
       sqlite3_free(errMsg);
-      return false;
+      exit_on_error();
     }
-    return true;
   }
 
-  /*****************************************************************************
-   * DEFINES
-   ****************************************************************************/
-
-#define EXEC_SQL(str) \
-  if (!db_exec(str)) \
-    return;
-
-#define DB_ACTIVE_OR_RETURN if (current_db == NULL) return;
-
-#define CURRENT_EXECID_VALID_OR_RETURN \
-  if (current_exec_id == INVALID) { \
-    std::cout << "Current execution ID invalid" << std::endl; \
-    return; \
+  void close_db() {
+    if (!db_active()) return;
+    db_exec("END TRANSACTION;");
+    sqlite3_close(current_db);
+    current_db = nullptr;
   }
 
-#define DO_WE_INSERT_OR_RETURN if(!do_we_insert()) return;
+  void exit_on_error(const std::string& err) {
+    std::cout << err << std::endl;
+    close_db();
+    exit(-1);
+  }
+
+  int get_exec_id(void* exec_id, int argc, char** argv, char** colName) {
+    if (argv[0] == nullptr)
+      *(sqlite3_int64*)exec_id = INVALID;
+
+    *(sqlite3_int64*)exec_id = std::stoi(argv[0]);
+    return 0;
+  }
+
+  int get_exec_results(void* notUsed, int argc, char** argv, char** colName) {
+    auto var_id = (unsigned int) std::stoi(argv[0]);
+    int val = std::stoi(argv[1]);
+    correctVal[var_id] = val;
+    return 0;
+  }
 
   /*****************************************************************************
    * IMPLEMENTATION
    ****************************************************************************/
 
-  void start_execution(struct executions& s, std::string path_to_db) {
-    if (sqlite3_open(path_to_db.c_str(), &current_db) != SQLITE_OK) {
-      std::cout << "Error in opening database" << std::endl;
-      return;
+  void set_exec_type(EXEC_TYPE e) {
+    exec_type = e;
+  }
+
+  void start_execution(std::string pb_name, unsigned int num_ex,
+                       std::string branching_name, std::string path_db) {
+
+    if (exec_type == EXEC_TYPE::INVALID_EXEC)
+      exit_on_error("Execution type is invalid");
+
+    if (sqlite3_open(path_db.c_str(), &current_db) != SQLITE_OK)
+      exit_on_error("Error in opening database");
+
+    db_exec("BEGIN TRANSACTION;");
+
+    if (exec_type == EXEC_TYPE::GET_UNIQUE_SOLUTION) {
+      db_exec(sql_str_insert_into_executions(
+          {0, 0, pb_name, num_ex, branching_name}
+      ));
+      current_exec_id = sqlite3_last_insert_rowid(current_db);
+      assert(current_exec_id != INVALID);
+    } else if (exec_type == EXEC_TYPE::INSERT_INTO_DB) {
+      {
+        std::stringstream sql;
+        sql <<
+            "SELECT exec_id FROM executions "
+              "WHERE pb_name = '" << pb_name << "' "
+              "AND num_ex = " << num_ex << " "
+              "AND single_sol_found = 1 "
+              "AND nodes_inserted = 0;";
+        db_exec(sql.str(), get_exec_id, &current_exec_id);
+      }
+
+      if (current_exec_id == INVALID)
+        exit_on_error("No single solution found for given problem and num_ex");
+
+      {
+        std::stringstream sql;
+        sql << "SELECT var_id, val FROM results "
+          "WHERE exec_id = " << current_exec_id << ";";
+        db_exec(sql.str(), get_exec_results);
+      }
     }
-
-    if (s.ech_method < 0 || s.ech_method >= NB_ECH_METHOD) {
-      std::cout << "Sampling method not valid." << std::endl;
-      return;
-    }
-
-    EXEC_SQL("BEGIN TRANSACTION;")
-
-    ech_method = s.ech_method;
-    max_nb_nodes = s.max_nb_nodes;
-    auto sql = sql_str_insert_into_executions(s);
-    EXEC_SQL(sql)
-
-    // ID of the executions we just inserted. Will be used for inserting nodes.
-    current_exec_id = sqlite3_last_insert_rowid(current_db);
   }
 
   void new_node() {
-    DB_ACTIVE_OR_RETURN
+    if (!db_active()) return;
+    if (!insertion_exec_type()) return;
     current_node_id++;
-    DO_WE_INSERT_OR_RETURN
-    CURRENT_EXECID_VALID_OR_RETURN
 
-    nodes n;
-    n.exec_id = (unsigned int)current_exec_id;
-    n.node_id = (unsigned int)current_node_id;
-    n.sat = 0;
-
-    auto sql = sql_str_insert_into_nodes(n);
-    EXEC_SQL(sql)
+    db_exec(sql_str_insert_into_nodes(
+      {(unsigned int) current_exec_id, (unsigned int)current_node_id}
+    ));
   }
 
-  void insert_varval_density(struct densities& s) {
-    DB_ACTIVE_OR_RETURN
-    DO_WE_INSERT_OR_RETURN
+  void new_propagator(unsigned int prop_id) {
+    if (!db_active()) return;
+    if (!insertion_exec_type()) return;
 
-    s.exec_id = (unsigned int)current_exec_id;
-    s.node_id = (unsigned int)current_node_id;
-    EXEC_SQL(sql_str_insert_into_densities(s))
+    db_exec(sql_str_insert_into_propagators(
+      {(unsigned int)current_exec_id, (unsigned int)current_node_id, prop_id}
+    ));
   }
 
-  void insert_varval_in_assigned(struct assigned& s) {
-    DB_ACTIVE_OR_RETURN
-    DO_WE_INSERT_OR_RETURN
 
-    s.exec_id = (unsigned int)current_exec_id;
-    s.node_id = (unsigned int)current_node_id;
+  void insert_varval_density(unsigned int prop_id, unsigned int var_id, int val,
+                             double max_sd, double a_avg_sd,
+                             unsigned int var_dom_size, double max_rel_sd,
+                             double max_rel_ratio) {
+    if (!db_active()) return;
+    if (!insertion_exec_type()) return;
 
-    auto sql = sql_str_insert_into_assigned(s);
-    EXEC_SQL(sql)
+    db_exec(sql_str_insert_into_densities({
+          (unsigned int)current_exec_id,
+          (unsigned int)current_node_id,
+          prop_id,
+          var_id,
+          val,
+          max_sd,
+          a_avg_sd,
+          var_dom_size,
+          max_rel_sd,
+          max_rel_ratio
+    }));
   }
 
-  void new_solution() {
-    DB_ACTIVE_OR_RETURN
+  void insert_varval_in_solution(unsigned int var_id, int val) {
+    if (!db_active()) return;
+    if (!get_uniq_sol_exec_type()) return;
 
-    current_result_id++;
-  }
-
-  void insert_varval_in_solution(struct results& s) {
-    DB_ACTIVE_OR_RETURN
-    CURRENT_EXECID_VALID_OR_RETURN
-
-    s.exec_id = (unsigned int)current_exec_id;
-    s.res_id=0; // Temporaire
-
-    EXEC_SQL(sql_str_insert_into_results(s))
-    solution_found = true;
+    db_exec(sql_str_insert_into_results(
+      {(unsigned int)current_exec_id, var_id, val}
+    ));
   }
 
   void end_execution() {
-    DB_ACTIVE_OR_RETURN
+    if (!db_active()) return;
 
-    // We find unsatifiable nodes and update them in the database.
-    if(solution_found) {
+    auto update_executions_set_1 = [&](std::string param) {
       std::stringstream sql;
-      sql << " UPDATE nodes SET sat = 1"
-          << " WHERE exec_id = " << current_exec_id
-          << " AND node_id IN ("
+      sql <<"UPDATE executions SET " << param << " = 1 "
+            "WHERE exec_id = " << current_exec_id << ";";
+      db_exec(sql.str());
+    };
 
-        << " SELECT nn.node_id"
-        << " FROM nodes AS nn"
-        << " WHERE"
-        << "       ( SELECT count(*)"
-        << "         FROM assigned AS a"
-        << "           JOIN results AS r"
-        << "             ON a.exec_id = r.exec_id"
-        << "                AND a.var_id = r.var_id"
-        << "                AND a.val = r.val"
-        << "                AND r.res_id = 0" //TODO: temporaire
-        << "         WHERE a.exec_id = nn.exec_id"
-        << "               AND a.node_id = nn.node_id"
-        << "       ) == ("
-        << "         SELECT count(*)"
-        << "         FROM assigned AS a"
-        << "         WHERE a.exec_id = nn.exec_id"
-        << "               AND a.node_id = nn.node_id"
-        << "       )"
-        << " AND nn.exec_id = " << current_exec_id
+    if (exec_type == EXEC_TYPE::GET_UNIQUE_SOLUTION && unique_sol_found)
+      update_executions_set_1("single_sol_found");
+    else if (exec_type == EXEC_TYPE::INSERT_INTO_DB)
+      update_executions_set_1("nodes_inserted");
 
-        << ");";
-
-      EXEC_SQL(sql.str())
-    }
-
-    EXEC_SQL("END TRANSACTION;")
-    sqlite3_close(current_db);
-    current_db = NULL;
-  }
-
-}
-
-namespace CBSDB {
-  void insert_if_solution(const Gecode::IntVarArray& x) {
-    DB_ACTIVE_OR_RETURN
-    for (int i=0; i<x.size(); i++)
-      if (!x[i].assigned())
-        return;
-
-    CBSDB::new_solution();
-    for(int i=0; i<x.size(); i++) {
-      CBSDB::results r;
-      r.var_id = x[i].varimp()->id();
-      r.val = x[i].val();
-      assert(current_result_id != -1);
-      r.res_id = (unsigned int)current_result_id;
-      CBSDB::insert_varval_in_solution(r);
-    }
-  }
-
-  void insert_if_solution(const Gecode::BoolVarArray& x) {
-    DB_ACTIVE_OR_RETURN
-    for (int i=0; i<x.size(); i++)
-      if (!x[i].assigned())
-        return;
-
-    CBSDB::new_solution();
-    for(int i=0; i<x.size(); i++) {
-      CBSDB::results r;
-      r.var_id = x[i].varimp()->id();
-      r.val = x[i].val();
-      assert(current_result_id != -1);
-      r.res_id = (unsigned int)current_result_id;
-      CBSDB::insert_varval_in_solution(r);
-    }
+    close_db();
   }
 }
+

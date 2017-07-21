@@ -29,8 +29,6 @@
 
 using namespace Gecode;
 
-bool FLAG_GLOBAL_BIDON_FIRST_SOL_FOUND = false;
-
 double a_avg_sd_VALUE;
 double max_rel_sd_VALUE;
 double intercept_VALUE;
@@ -273,10 +271,6 @@ public:
   }
 
   virtual Candidate getChoice(Space& home) = 0;
-  //HACK
-  virtual void __insert_in_bd_before_destruction(Space& home) {}
-
-
 };
 
 #define USING_BH \
@@ -481,16 +475,38 @@ public:
     struct Best { unsigned int var_id; int val; double score;
     } best_candidate{0,0,0};
 
+    #ifdef SQL
+    if (CBSDB::is_node_sat(x)) {
+      CBSDB::new_node();
+      for (auto prop : (*logDensity)) {
+        unsigned int prop_id = prop.first;
+        CBSDB::new_propagator(prop_id);
+//        double slnCnt = (*logProp)[prop_id].second;
+        size_t nb_records = prop.second.first;
+        Record *records = prop.second.second;
+        for (unsigned int i = 0; i < nb_records; ++i) {
+          Record *r = &records[i];
+          unsigned int idx = varvalpos(xD, r->var_id, r->val);
+          unsigned int var_idx = varpos(xD, r->var_id);
+          CBSDB::insert_varval_density(
+            prop_id, r->var_id, r->val, max_sd[idx], a_avg_sd[idx],
+            var_dom_size[idx], max_rel_sd[idx], max_rel_ratio[idx]);
+        }
+      }
+    }
+    #endif
+
+
     for_every_log_entry([&](unsigned int prop_id, double slnCnt,
                             unsigned int var_id, int val, double density) {
       unsigned int idx = varvalpos(xD, var_id, val);
 
-
       double _x = 0;
-      _x +=  a_avg_sd_VALUE * a_avg_sd[idx];
-      _x += max_rel_sd_VALUE * max_rel_sd[idx];
-      _x += intercept_VALUE;
-      double score = 1.0 / (1.0 + exp(-_x));
+//      _x += a_avg_sd_VALUE * a_avg_sd[idx];
+//      _x += max_rel_sd_VALUE * max_rel_sd[idx];
+//      _x += intercept_VALUE;
+//      double score = 1.0 / (1.0 + exp(-_x));
+      double score = max_sd[idx];
 
       if (score > best_candidate.score)
         best_candidate = Best{var_id, val, score};
@@ -501,47 +517,6 @@ public:
     return Candidate{xD.positions[best_candidate.var_id], best_candidate.val};
   }
 
-  //HACK HACK HACK
-  virtual void __insert_in_bd_before_destruction(Space& home) {
-    #ifdef SQL
-    if (!FLAG_GLOBAL_BIDON_FIRST_SOL_FOUND) return;
-    getChoice(home);
-    CBSDB::new_node();
-
-    for (int i=0; i<x.size(); i++) {
-      if (x[i].assigned()) continue;
-      if (max_sd[varvalpos(xD, x[i].id(), x[i].min())] == 0) continue;
-      for (Int::ViewValues<View> val(x[i]); val(); ++val) {
-        unsigned int idx = varvalpos(xD, x[i].id(), val.val());
-
-        CBSDB::densities d;
-        d.var_id = x[i].id();
-        d.val = val.val();
-        d.max_sd = max_sd[idx];
-        d.a_avg_sd = a_avg_sd[idx];
-        d.var_dom_size = (unsigned int)var_dom_size[idx];
-        d.max_rel_sd = max_rel_sd[idx];
-        d.max_rel_ratio = max_rel_ratio[idx];
-//        d.w_sc_avg = w_sc_avg[idx];
-//        d.w_anti_sc_avg = w_anti_sc_avg[idx];
-//        d.w_t_avg = wTAvg[idx];
-//        d.w_anti_t_avg = wAntiTAvg[idx];
-//        d.w_d_avg = wDAvg[idx];
-        CBSDB::insert_varval_density(d);
-
-      }
-
-    }
-    for (int i=0; i<x.size(); i++)
-      if (x[i].assigned()) {
-        // TODO: HACK il ne faut pas mettre exec_id et node_id...
-        CBSDB::assigned a;
-        a.var_id = x[i].varimp()->id();
-        a.val = x[i].val();
-        CBSDB::insert_varval_in_assigned(a);
-      }
-    #endif
-  }
 };
 
 template<class View> double ai<View>::max_sd[SIZE]{};
@@ -593,15 +568,6 @@ public:
   }
   virtual size_t dispose(Space& home) {
     home.ignore(*this, AP_DISPOSE);
-
-    //HACK HACK HACK
-    #ifdef SQL
-    heur.set_log_density(&logDensity);
-    heur.set_log_sln_cnt(&logProp);
-    heur.__insert_in_bd_before_destruction(home);
-    #endif
-    //HACK HACK HACK
-
     // ~aAvgSD() calls ~SharedHashMap() which calls ~SharedHashMapObject() to
     // deallocate the hash map when the refcount of SharedHashMapObject is 0
     heur.~BranchingHeur<View>();
@@ -664,7 +630,7 @@ public:
           propsToDelete.push_back(it->first);
 
       // We delete them from the log
-      for (std::vector<unsigned int>::iterator it = propsToDelete.begin();
+      for (auto it = propsToDelete.begin();
            it != propsToDelete.end(); ++it) {
         unsigned int prop_id = *it;
         // TODO: Trouver une manière de free comme il le faut (avec vrai grandeur, pas nb element en ce moment)...

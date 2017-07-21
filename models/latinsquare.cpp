@@ -38,6 +38,10 @@ extern const char* examples[];
 extern const unsigned int n_examples;
 }
 
+#ifdef SQL
+std::string path_db;
+#endif
+
 class LatinSquare : public Script {
 protected:
   /// The size of the problem
@@ -118,17 +122,8 @@ public:
         branching_name = "ai";
       }
 
-      // TODO: Mettre une option command line pour activer cette ligne ou non
       #ifdef SQL
-      CBSDB::executions e;
-      e.pb_name = "latinsquare";
-      e.num_ex = opt.size();
-      e.branching_name = "a_avg_sd";
-      e.ech_method = CBSDB::FULL;
-      e.max_nb_nodes = 10000;
-
-      CBSDB::start_execution(e, "/media/sam/hdd3tb/cbs-scripts"
-        "/bd/autogen/cbs.db");
+      CBSDB::start_execution("latinsquare", opt.size(), "max_sd", path_db);
       #endif
 
       // In case there's no more propagators with include instrumentation
@@ -146,10 +141,6 @@ public:
   }
 
   ~LatinSquare() {
-    for (int i=0; i<x.size(); i++)
-      if (!x[i].assigned())
-        return;
-    FLAG_GLOBAL_BIDON_FIRST_SOL_FOUND = true;
     #ifdef SQL
     CBSDB::insert_if_solution(x);
     #endif
@@ -178,8 +169,6 @@ public:
 
 };
 
-
-
 int
 main(int argc, char* argv[]) {
   SizeOptions opt("Latin Square");
@@ -190,18 +179,23 @@ main(int argc, char* argv[]) {
 //  opt.mode(SM_GIST);
 
   for (int i=0; i<argc; i++) {
-    std::string txt(argv[i]);
-    if (txt == "-a_avg_sd")
+    std::string curr_param = argv[i];
+    if (curr_param == "-a_avg_sd")
       a_avg_sd_VALUE = std::stod(argv[i+1]);
-    else if (txt == "-max_rel_sd")
+    else if (curr_param == "-max_rel_sd")
       max_rel_sd_VALUE = std::stod(argv[i+1]);
-    else if (txt == "-intercept")
+    else if (curr_param == "-intercept")
       intercept_VALUE = std::stod(argv[i+1]);
+    #ifdef SQL
+    else if (curr_param == "-path_db")
+      path_db = argv[i+1];
+    else if (curr_param == "-exec_type") {
+      CBSDB::EXEC_TYPE e = (CBSDB::EXEC_TYPE) std::stoi(argv[i+1]);
+      assert(e >= 0 && e < CBSDB::LEN);
+      CBSDB::set_exec_type(e);
+    }
+    #endif
   }
-
-  std::cout << a_avg_sd_VALUE << std::endl;
-  std::cout << max_rel_sd_VALUE << std::endl;
-  std::cout << intercept_VALUE << std::endl;
 
   opt.branching(LatinSquare::BRANCH_CBS_MAX_SD);
   opt.branching(LatinSquare::BRANCH_NONE, "none", "Branch on rows/columns in order");
