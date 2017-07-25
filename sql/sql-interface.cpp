@@ -118,20 +118,42 @@ namespace CBSDB {
     db_exec("BEGIN TRANSACTION;");
 
     if (exec_type == EXEC_TYPE::GET_UNIQUE_SOLUTION) {
-      db_exec(sql_str_insert_into_executions(
+      {
+        std::stringstream sql;
+        sql << "SELECT exec_id FROM executions "
+               "WHERE pb_name = '" << pb_name << "' "
+               "AND num_ex = " << num_ex << ";";
+
+        db_exec(sql.str(), get_exec_id, &current_exec_id);
+      }
+      if (current_exec_id != INVALID) {
+        sqlite3_int64 exec_id_with_sol = INVALID;
+        std::stringstream sql;
+        sql << "SELECT exec_id FROM executions "
+               "WHERE exec_id = " << current_exec_id << " "
+               "AND single_sol_found = 1;";
+        db_exec(sql.str(), get_exec_id, &exec_id_with_sol);
+        if (exec_id_with_sol != INVALID) {
+          std::stringstream err;
+          err << "pb_name " << pb_name << " and ex " << num_ex
+              << " has already single solution";
+          exit_on_error(err.str());
+        }
+      } else {
+        db_exec(sql_str_insert_into_executions(
           {0, 0, pb_name, num_ex, branching_name}
-      ));
-      current_exec_id = sqlite3_last_insert_rowid(current_db);
-      assert(current_exec_id != INVALID);
+        ));
+        current_exec_id = sqlite3_last_insert_rowid(current_db);
+        assert(current_exec_id != INVALID);
+      }
     } else if (exec_type == EXEC_TYPE::INSERT_INTO_DB) {
       {
         std::stringstream sql;
-        sql <<
-            "SELECT exec_id FROM executions "
-              "WHERE pb_name = '" << pb_name << "' "
-              "AND num_ex = " << num_ex << " "
-              "AND single_sol_found = 1 "
-              "AND nodes_inserted = 0;";
+        sql << "SELECT exec_id FROM executions "
+               "WHERE pb_name = '" << pb_name << "' "
+               "AND num_ex = " << num_ex << " "
+               "AND single_sol_found = 1 "
+               "AND nodes_inserted = 0;";
         db_exec(sql.str(), get_exec_id, &current_exec_id);
       }
 

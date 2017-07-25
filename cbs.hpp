@@ -506,7 +506,7 @@ public:
 //      _x += max_rel_sd_VALUE * max_rel_sd[idx];
 //      _x += intercept_VALUE;
 //      double score = 1.0 / (1.0 + exp(-_x));
-      double score = max_sd[idx];
+      double score = a_avg_sd[idx];
 
       if (score > best_candidate.score)
         best_candidate = Best{var_id, val, score};

@@ -104,26 +104,27 @@ public:
       std::string branching_name;
       if (opt.branching() == BRANCH_CBS_MAX_SD) {
         cbsbranch(*this, x, CBSBranchingHeuristic::MAX_SD);
-        branching_name = "maxSD";
+        branching_name = "max_sd";
       } else if (opt.branching() == BRANCH_CBS_MAX_REL_SD) {
         cbsbranch(*this, x, CBSBranchingHeuristic::MAX_REL_SD);
-        branching_name = "maxRelSD";
+        branching_name = "max_rel_sd";
       } else if (opt.branching() == BRANCH_CBS_MAX_REL_RATIO) {
         cbsbranch(*this, x, CBSBranchingHeuristic::MAX_REL_RATIO);
-        branching_name = "maxRelRatio";
+        branching_name = "max_rel_ratio";
       } else if (opt.branching() == BRANCH_CBS_A_AVG_SD) {
         cbsbranch(*this, x, CBSBranchingHeuristic::A_AVG_SD);
-        branching_name = "aAvgSD";
+        branching_name = "a_avg_sd";
       } else if (opt.branching() == BRANCH_CBS_W_SC_AVG) {
         cbsbranch(*this, x, CBSBranchingHeuristic::W_SC_AVG);
-        branching_name = "wSCAvg";
+        branching_name = "w_sc_avg";
       } else if (opt.branching() == BRANCH_CBS_AI) {
         cbsbranch(*this, x, CBSBranchingHeuristic::AI);
-        branching_name = "ai";
+        branching_name = "a_avg_sd";
       }
 
       #ifdef SQL
-      CBSDB::start_execution("latinsquare", opt.size(), "max_sd", path_db);
+      CBSDB::start_execution("latinsquare", opt.size(), branching_name,
+                             path_db);
       #endif
 
       // In case there's no more propagators with include instrumentation
