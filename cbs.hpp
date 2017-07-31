@@ -130,7 +130,7 @@ unsigned int varpos(const VADesc& xD, unsigned int var_id) {
  * \brief Base class for collecting densities from propagators
  *
  * Before beginning to explain what this class does, we must talk about the
- * cbs() method in Gecode::Propagator and the CBS class from which we inherit.
+ * slndist() method in Gecode::Propagator and the CBS class from which we inherit.
  *
  * Gecode::Propagator is the base class for every constraint in Gecode.
  * The algorithm to compute solution densities for a given (variable,value) pair
@@ -139,12 +139,12 @@ unsigned int varpos(const VADesc& xD, unsigned int var_id) {
  * that any given concrete propagator can overload to tell how it compute
  * densities for its variables. Here is the signature of the method:
  *
- *   Gecode::Propagator::cbs(Space& home, CBS* densities) const;
+ *   Gecode::Propagator::slndist(Space& home, CBS* densities) const;
  *
  * As the time of writting this comment, the distinct propagator (see
  * gecode/int/distinct.hh) and regular propagator (see
- * gecode/int/extensional.hh) specialise the cbs method to specify its algorithm
- * to compute solutions densities.
+ * gecode/int/extensional.hh) specialise the slndist method to specify its
+ * algorithm to compute solutions densities.
  *
  * Of interest to us is the second argument of this method: CBS* densities.
  * The class CBS is an interface (virtual pure class) that contains only one
@@ -152,12 +152,12 @@ unsigned int varpos(const VADesc& xD, unsigned int var_id) {
  *
  * virtual void Gecode::CBS::set(unsigned int var_id, int val, double density) = 0;
  *
- * When a propagator overloads its cbs() method, all it knows is he has access
+ * When a propagator overloads its slndist() method, all it knows is he has access
  * to a object CBS with a set() method that enables him to communicate the
  * results of its computation (i.e. densities for each of its
  * (variable,value) pair).
  *
- * When braching, CBSBrancher must call the cbs() method on each active
+ * When braching, CBSBrancher must call the slndist() method on each active
  * propagator that overloads the method and pass an object that inherits the
  * class CBS to store densities and compute a choice for branching.
  *
@@ -257,7 +257,7 @@ public:
     for (unsigned int i=0; i<x.size(); i++) {
       bool instrumented = false;
       for (SubscribedPropagators sp(x[i]); sp(); ++sp) {
-        if (sp.propagator().cbs(home,NULL)) {
+        if (sp.propagator().slndist(home,NULL)) {
           instrumented = true;
           break;
         }
@@ -417,7 +417,7 @@ public:
 //    // Product of domain of every variables in each proapgators
 //    for (int i=0; i<x.size(); i++) {
 //      for (SubscribedPropagators sp(x[i]); sp(); ++sp) {
-//        if (sp.propagator().cbs(home, NULL)) {
+//        if (sp.propagator().slndist(home, NULL)) {
 //          unsigned int prop_id = sp.propagator().id();
 //          if (prop_card_prod.find(prop_id) == prop_card_prod.end())
 //            prop_card_prod[prop_id] = 1;
@@ -428,7 +428,7 @@ public:
 //
 //    // Tightness of each propagator
 //    for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
-//      if (p.propagator().cbs(home, NULL)) {
+//      if (p.propagator().slndist(home, NULL)) {
 //        unsigned int prop_id = p.propagator().id();
 //        double slnCnt = (*logProp)[prop_id].second;
 //        prop_proj_tightness[prop_id] = slnCnt / prop_card_prod[prop_id];
@@ -598,7 +598,7 @@ public:
   virtual bool status(const Space& home) const {
     Space& h = const_cast<Space&>(home);
     for (Propagators p(h, PropagatorGroup::all); p(); ++p)
-      if (p.propagator().cbs(h, NULL))
+      if (p.propagator().slndist(h, NULL))
         return true;
     return false;
   }
@@ -608,12 +608,12 @@ public:
 //    #endif
 
     // Active propagators and the size we need for their log.
-    // We considere a propagator as "active" only if he supports cbs().
+    // We considere a propagator as "active" only if he supports slndist().
     // TODO: Commentaire
     __gnu_cxx::hash_map<unsigned int, int> activeProps;
     for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
-      int log_size = p.propagator().cbs(home,NULL);
-      // If the propagator supports cbs and has records
+      int log_size = p.propagator().slndist(home,NULL);
+      // If the propagator supports slndist and has records
       if (log_size != 0) {
         assert(log_size > 1);
         activeProps[p.propagator().id()] = log_size;
@@ -645,7 +645,7 @@ public:
     heur.set_log_density(&logDensity);
     heur.set_log_sln_cnt(&logProp);
     for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
-      if (!p.propagator().cbs(home,NULL)) continue;
+      if (!p.propagator().slndist(home,NULL)) continue;
       unsigned int prop_id = p.propagator().id();
       // Propagator already in the log?
       bool in_log = logDensity.find(prop_id) != logDensity.end();
@@ -671,7 +671,7 @@ public:
 
       if (!in_log || changed) {
         heur.set_current_prop(prop_id);
-        p.propagator().cbs(home,&heur);
+        p.propagator().slndist(home,&heur);
       }
     }
 
@@ -696,7 +696,7 @@ public:
     assert(x[c.idx].in(c.val));
 
     for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
-      if (!p.propagator().cbs(home, NULL)) continue;
+      if (!p.propagator().slndist(home, NULL)) continue;
       unsigned int prop_id = p.propagator().id();
       assert(logProp[prop_id].first == logDensity[prop_id].first);
     }
