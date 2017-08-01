@@ -30,14 +30,8 @@ set(EXAMPLES
         "qcp"
         )
 
-#add_custom_target(
-#        sql_structs ALL
-#        COMMAND "{CMAKE_CURRENT_SOURCE_DIR}/sql/sql-interface.hh.sh"
-#        DEPENDS {CMAKE_CURRENT_SOURCE_DIR}/schema.txt
-#)
-
 set(SQL_SRC "")
-option(BUILD_SQL "Build SQLite profiling." ON)
+option(BUILD_SQL "Build SQLite profiling." OFF)
 if(${BUILD_SQL})
     find_package(Threads REQUIRED)
     include_directories(sql)
@@ -47,7 +41,7 @@ endif()
 
 include_directories(./)
 
-foreach(ex "latinsquare" "nonogram")
+foreach(ex "latinsquare" "nonogram" "qcp")
     add_executable(${ex} models/${ex}.cpp ${SQL_SRC})
     target_link_libraries(${ex} ${Gecode_LIBRARIES})
     if(${BUILD_SQL})
