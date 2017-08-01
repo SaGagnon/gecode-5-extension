@@ -353,7 +353,7 @@ public:
 };
 
 
-const size_t SIZE = 30*30*30;
+const size_t SIZE = 70*70*70;
 
 template<class View>
 class ai : public BranchingHeuristic<View> {
