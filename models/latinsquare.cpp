@@ -81,7 +81,7 @@ public:
         int field;
         latinSqStr >> field;
         if (field != -1)
-          rel(*this, m(i, j), IRT_EQ, field);
+          rel(*this, m(j, i), IRT_EQ, field);
       }
     }
 
