@@ -213,13 +213,6 @@ public:
     b.update(*this, share, s.b);
   }
 
-
-  ~Nonogram() {
-    #ifdef SQL
-    CBSDB::insert_if_solution(b);
-    #endif
-  }
-
   /// Copy space during cloning
   virtual Space*
   copy(bool share) {
@@ -242,6 +235,10 @@ public:
     }
     os << std::endl;
   }
+
+  #ifdef SQL
+  CBSDB::insert_if_solution(b);
+  #endif
 };
 
 

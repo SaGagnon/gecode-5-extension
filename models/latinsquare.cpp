@@ -141,12 +141,6 @@ public:
     x.update(*this,share,s.x);
   }
 
-  ~LatinSquare() {
-    #ifdef SQL
-    CBSDB::insert_if_solution(x);
-    #endif
-  }
-
   /// Perform copying during cloning
   virtual Space*
   copy(bool share) {
@@ -166,6 +160,10 @@ public:
       os << std::endl;
     }
     os << std::endl;
+
+    #ifdef SQL
+    CBSDB::insert_if_solution(x);
+    #endif
   }
 
 };
