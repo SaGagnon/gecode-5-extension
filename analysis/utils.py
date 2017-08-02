@@ -4,6 +4,7 @@
 from sklearn.linear_model import LogisticRegressionCV
 
 import math
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
@@ -74,6 +75,30 @@ def get_node_in_exs_old_db(exs, path_db, sat=True):
         )
         
     return df
+
+def get_node_in_exs_2runs(path_db, exs=[]):
+    req_sql = """
+        SELECT d.*,
+            CASE WHEN r.exec_id IS NOT NULL THEN 1 ELSE 0 END as in_sol
+        FROM densities AS d
+        LEFT JOIN results AS r
+            ON d.exec_id=r.exec_id
+            AND d.var_id=r.var_id
+            AND d.val=r.val
+    """
+
+    if len(exs) != 0:
+        _exs = ""
+        for x in exs:
+            _exs += str(x) + ','
+        _exs = _exs[:-1]
+        req_sql += " WHERE exec_id in (" + _exs + ")"
+
+    output = !sqlite3 -header -csv {path_db} "{req_sql}"
+    return pd.read_csv(
+        StringIO(output.n),
+        index_col=['exec_id','node_id','prop_id','var_id','val']
+    )
 
 features_subset = [
     "max_sd",
