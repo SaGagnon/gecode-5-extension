@@ -130,3 +130,32 @@ def print_coefs(clf, features):
     print('_x += intercept;')
 
 # TEMP
+
+def solved_graph(df, xcol, xlabel=""):
+    for heur in df.reset_index()['heur'].unique():
+        if heur == 'cbs_a_avg_sd': continue
+        x = df.loc[heur].dropna().sort_values(by=xcol)[xcol].values
+        y = [i/_len*100 for i,_ in enumerate(x)]
+
+
+        plt.plot(x,y, label=heur, linewidth=3)
+        plt.xscale('log')
+
+    if xlabel != "" : plt.xlabel(xlabel)
+    else: plt.xlabel(xcol)
+    plt.ylabel('% Solved')
+    plt.ylim(0,100)
+
+    plt.legend(loc='lower right')
+    
+def failures_time_solved(path, title):
+    df = pd.read_csv(path, sep=' ', names=['heur', 'ex', 'failures', 'time'])
+    df = df.replace(-1, np.nan)
+    df = df.set_index(['heur', 'ex'])
+
+    plt.figure(figsize=(12,4))
+    plt.suptitle(title)
+    plt.subplot(1,2,1)
+    solved_graph(df, 'failures', 'Number of failures')
+    plt.subplot(1,2,2)
+    solved_graph(df, 'time', 'Time (ms)')
