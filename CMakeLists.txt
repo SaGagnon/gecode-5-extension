@@ -21,14 +21,14 @@ set_target_properties(cbs PROPERTIES LINKER_LANGUAGE CXX)
 target_link_libraries(cbs ${Gecode_LIBRARIES})
 
 
-set(EXAMPLES
-        "latinsquare"
-        "nonogram"
-        "langford-number"
-        "ortho-latin"
-        "pentominoes"
-        "qcp"
-        )
+#set(EXAMPLES
+#        "latinsquare"
+#        "nonogram"
+#        "langford-number"
+#        "ortho-latin"
+#        "pentominoes"
+#        "qcp"
+#        )
 
 set(SQL_SRC "")
 option(BUILD_SQL "Build SQLite profiling." OFF)
@@ -41,7 +41,7 @@ endif()
 
 include_directories(./)
 
-foreach(ex "latinsquare" "nonogram" "qcp")
+foreach(ex "latinsquare" "nonogram" "qcp" "magic-square")
     add_executable(${ex} models/${ex}.cpp ${SQL_SRC})
     target_link_libraries(${ex} ${Gecode_LIBRARIES})
     if(${BUILD_SQL})
