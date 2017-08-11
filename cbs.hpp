@@ -224,6 +224,7 @@ public:
   virtual void setMarginalDistribution(unsigned int var_id, int val,
                                        double density) {
     assert(current_prop != -1);
+    assert(!x[xD.positions[var_id]].assigned());
     assert(density>0 && density<1);
     assert(x[xD.positions[var_id]].in(val));
     Record r; r.var_id=var_id; r.val=val; r.density=density;
