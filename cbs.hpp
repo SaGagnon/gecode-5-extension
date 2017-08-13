@@ -175,6 +175,9 @@ public:
 private:
   // Propagator that is currently using the set() method.
   int current_prop;
+  std::pair<size_t,Record*> *rec_current_prop; // Optimization
+  size_t *nb_rec_current_prop; // Optimization
+
 protected:
   // Array of variables we are using for branching
   ViewArray<View> x;
@@ -218,6 +221,8 @@ public:
   // method of this class
   void set_current_prop(unsigned int prop_id) {
     current_prop = prop_id;
+    rec_current_prop = &(*logDensity)[current_prop];
+    nb_rec_current_prop = &rec_current_prop->first;
   }
   // Method used by all propagators for communicating calculated densities for
   // each of its (variable,value) pair.
@@ -228,9 +233,7 @@ public:
     assert(density>0 && density<1);
     assert(x[xD.positions[var_id]].in(val));
     Record r; r.var_id=var_id; r.val=val; r.density=density;
-    // Number of records for the current propagator
-    size_t *nb_record = &(*logDensity)[current_prop].first;
-    (*logDensity)[current_prop].second[(*nb_record)++] = r;
+    rec_current_prop->second[(*nb_rec_current_prop)++] = r;
   }
   virtual void setSupportSize(double count) {
     assert(current_prop != -1);

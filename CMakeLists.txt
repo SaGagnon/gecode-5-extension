@@ -13,6 +13,7 @@ find_package(Gecode REQUIRED)
 include_directories(${Gecode_INCLUDE_DIRS})
 
 set(CMAKE_CXX_STANDARD 11)
+#set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -ggdb")
 
 # This is only for having syntax coloring in Clion. Compiling cbs won't actually
 # work.
