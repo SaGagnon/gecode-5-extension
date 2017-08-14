@@ -259,6 +259,7 @@ public:
   void for_every_varIdx_val(Space& home,
                             std::function<void(unsigned int, int)> f) {
     for (unsigned int i=0; i<x.size(); i++) {
+      if (x[i].assigned()) continue;
       bool instrumented = false;
       for (SubscribedPropagators sp(x[i]); sp(); ++sp) {
         if (sp.propagator().slndist(home,NULL)) {
@@ -267,8 +268,6 @@ public:
         }
       }
       if (!instrumented) continue;
-
-      if (x[i].assigned()) continue;
       for (Int::ViewValues<View> val(x[i]); val(); ++val)
         f(x[i].id(),val.val());
     }
@@ -301,6 +300,7 @@ public:
       if (dens>best_candidate.dens)
           best_candidate = Best{var_id, val, dens};
     });
+    assert(best_candidate.var_id != 0);
     return Candidate{xD.positions[best_candidate.var_id],best_candidate.val};
   }
 };
