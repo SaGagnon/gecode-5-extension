@@ -42,7 +42,7 @@ endif()
 
 include_directories(./)
 
-foreach(ex "latinsquare" "nonogram" "qcp" "magic-square")
+foreach(ex "latinsquare" "nonogram" "qcp" "magic-square" "minimum-deficiency")
     add_executable(${ex} models/${ex}.cpp ${SQL_SRC})
     target_link_libraries(${ex} ${Gecode_LIBRARIES})
     if(${BUILD_SQL})
