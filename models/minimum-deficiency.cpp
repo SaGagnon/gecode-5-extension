@@ -59,7 +59,7 @@ public:
       }
 
       n_cols = max_card*2;
-      edge_col = IntVarArray(*this, num_edges, 0, max_card);
+      edge_col = IntVarArray(*this, num_edges, 0, n_cols);
     }
 
 
@@ -77,7 +77,8 @@ public:
     rel(*this, n_holes == sum(node_holes));
 
     cbsbranch(*this, edge_col, CBSBranchingHeuristic::MAX_SD);
-//    branch(*this, edge_col, INT_VAR_SIZE_MIN(), INT_VAL_SPLIT_MIN());
+//    branch(*this, edge_col, CBSBranchingHeuristic::MAX_SD);
+    branch(*this, edge_col, INT_VAR_SIZE_MIN(), INT_VAL_SPLIT_MIN());
 //    branch(*this, edge_col, INT_VAR_AFC_MIN(opt.decay()), INT_VAL_SPLIT_MIN());
 //    branch(*this, edge_col, INT_VAR_ACTIVITY_SIZE_MAX(opt.decay()), INT_VAL_MIN());
   }
