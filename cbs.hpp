@@ -21,6 +21,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <set>
 
 
 #ifdef SQL
@@ -234,6 +235,7 @@ public:
   // each of its (variable,value) pair.
   virtual void setMarginalDistribution(unsigned int var_id, int val,
                                        double density) {
+    assert(var_id != 0);
     if (!xD.positions.isIn(var_id)) return;
     assert(current_prop != -1);
     assert(!x[xD.positions[var_id]].assigned());
@@ -610,10 +612,26 @@ public:
   virtual bool status(const Space& home) const {
     Space& h = const_cast<Space&>(home);
 
-    for (auto prop : logDensity) {
-      if (prop.second.first != 0)
-        return true;
+    /*
+     * It is possible for a propagator with cbs instrumentation to be active
+     * without any variable left to branch on in CBSBrancher.
+     * TODO: Continuer explication ou corriger problème...
+     */
+
+    std::set<int> active_prop_ids;
+    for (Propagators p(h, PropagatorGroup::all); p(); ++p)
+      if (p.propagator().slndist(h, NULL))
+        active_prop_ids.insert(p.propagator().id());
+
+    for (int i=0; i<x.size(); i++) {
+      if (x[i].assigned()) continue;
+      View& _x = const_cast<View&>(x[i]);
+      for (SubscribedPropagators sp(_x); sp(); ++sp) {
+        if (active_prop_ids.find(sp.propagator().id()) != active_prop_ids.end())
+          return true;
+      }
     }
+    return false;
   }
   virtual const Choice* choice(Space& home) {
 //    #ifdef SQL
@@ -714,6 +732,7 @@ public:
 //      assert(logProp[prop_id].first > logDensity[prop_id].first);
 //    }
 
+//    std::cout << c.idx << " " << c.val << std::endl;
     return new PosValChoice<int>(*this,2,c.idx,c.val);
   }
   virtual const Choice* choice(const Space&, Archive& e) {
