@@ -63,12 +63,18 @@ public:
     assert(object() == NULL);
     object(new VarIdToPosO());
   }
+  bool isIn(unsigned int i) const {
+    VarIdToPosO::HashMap *hm = &static_cast<VarIdToPosO*>(object())->hash_map;
+    return hm->find(i) != hm->end();
+  }
   unsigned int& operator[](unsigned int i) {
     return static_cast<VarIdToPosO*>(object())->hash_map[i];
   }
   unsigned int operator[](unsigned int i) const {
+    assert(isIn(i));
     return static_cast<VarIdToPosO*>(object())->hash_map[i];
   }
+
 };
 
 // View array description
@@ -228,6 +234,7 @@ public:
   // each of its (variable,value) pair.
   virtual void setMarginalDistribution(unsigned int var_id, int val,
                                        double density) {
+    if (!xD.positions.isIn(var_id)) return;
     assert(current_prop != -1);
     assert(!x[xD.positions[var_id]].assigned());
     assert(density>0 && density<1);
@@ -591,6 +598,7 @@ public:
     for (LogDensity::iterator it=logDensity.begin(); it!=logDensity.end(); ++it) {
       unsigned int prop_id = it->first;
       size_t count = b.logDensity[prop_id].first;
+      if (count == 0) continue;
       it->second.second = home.alloc<Record>(count);
       memcpy(it->second.second, b.logDensity[prop_id].second, count*sizeof(Record));
     }
@@ -601,10 +609,11 @@ public:
   }
   virtual bool status(const Space& home) const {
     Space& h = const_cast<Space&>(home);
-    for (Propagators p(h, PropagatorGroup::all); p(); ++p)
-      if (p.propagator().slndist(h, NULL))
+
+    for (auto prop : logDensity) {
+      if (prop.second.first != 0)
         return true;
-    return false;
+    }
   }
   virtual const Choice* choice(Space& home) {
 //    #ifdef SQL
@@ -699,11 +708,11 @@ public:
     assert(!x[c.idx].assigned());
     assert(x[c.idx].in(c.val));
 
-    for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
-      if (!p.propagator().slndist(home, NULL)) continue;
-      unsigned int prop_id = p.propagator().id();
-      assert(logProp[prop_id].first == logDensity[prop_id].first);
-    }
+//    for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
+//      if (!p.propagator().slndist(home, NULL)) continue;
+//      unsigned int prop_id = p.propagator().id();
+//      assert(logProp[prop_id].first > logDensity[prop_id].first);
+//    }
 
     return new PosValChoice<int>(*this,2,c.idx,c.val);
   }
