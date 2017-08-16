@@ -44,7 +44,7 @@ endif()
 include_directories(./)
 
 foreach(ex "latinsquare" "nonogram" "qcp" "magic-square" "minimum-deficiency"
-        "bin-packing")
+        "bin-packing" "crowded-chess")
     if(${ex} STREQUAL "bin-packing")
         find_package(Threads REQUIRED)
     endif()
