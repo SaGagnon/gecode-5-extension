@@ -13,7 +13,7 @@ find_package(Gecode REQUIRED)
 include_directories(${Gecode_INCLUDE_DIRS})
 
 set(CMAKE_CXX_STANDARD 11)
-#set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -ggdb")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -ggdb")
 
 # This is only for having syntax coloring in Clion. Compiling cbs won't actually
 # work.
@@ -33,6 +33,7 @@ target_link_libraries(cbs ${Gecode_LIBRARIES})
 
 set(SQL_SRC "")
 option(BUILD_SQL "Build SQLite profiling." OFF)
+
 if(${BUILD_SQL})
     find_package(Threads REQUIRED)
     include_directories(sql)
@@ -42,10 +43,14 @@ endif()
 
 include_directories(./)
 
-foreach(ex "latinsquare" "nonogram" "qcp" "magic-square" "minimum-deficiency")
+foreach(ex "latinsquare" "nonogram" "qcp" "magic-square" "minimum-deficiency"
+        "bin-packing")
+    if(${ex} STREQUAL "bin-packing")
+        find_package(Threads REQUIRED)
+    endif()
     add_executable(${ex} models/${ex}.cpp ${SQL_SRC})
     target_link_libraries(${ex} ${Gecode_LIBRARIES})
-    if(${BUILD_SQL})
+    if(${BUILD_SQL} OR ${ex} MATCHES "bin-packing")
         target_link_libraries(${ex} Threads::Threads ${CMAKE_DL_LIBS})
     endif()
 endforeach(ex)
