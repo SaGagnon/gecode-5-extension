@@ -179,12 +179,6 @@ public:
     unsigned int idx; // Index of the variable in x
     int val; // Value in the domain of the variable
   };
-private:
-  // Propagator that is currently using the set() method.
-  int current_prop;
-  std::pair<size_t,Record*> *rec_current_prop; // Optimization
-  size_t *nb_rec_current_prop; // Optimization
-
 protected:
   // Array of variables we are using for branching
   ViewArray<View> x;
@@ -224,29 +218,22 @@ public:
     assert(_logSlnCnt != NULL);
     logProp = _logSlnCnt;
   }
-  // Method for specifying the propagator that is currently using the set
-  // method of this class
-  void set_current_prop(unsigned int prop_id) {
-    current_prop = prop_id;
-    rec_current_prop = &(*logDensity)[current_prop];
-    nb_rec_current_prop = &rec_current_prop->first;
-  }
   // Method used by all propagators for communicating calculated densities for
   // each of its (variable,value) pair.
-  virtual void setMarginalDistribution(unsigned int var_id, int val,
+  virtual void setMarginalDistribution(unsigned int prop_id,
+                                       unsigned int var_id, int val,
                                        double density) {
     assert(var_id != 0);
     if (!xD.positions.isIn(var_id)) return;
-    assert(current_prop != -1);
     assert(!x[xD.positions[var_id]].assigned());
     assert(density>0 && density<1);
     assert(x[xD.positions[var_id]].in(val));
     Record r; r.var_id=var_id; r.val=val; r.density=density;
-    rec_current_prop->second[(*nb_rec_current_prop)++] = r;
+    size_t *nb_rec = &(*logDensity)[prop_id].first;
+    (*logDensity)[prop_id].second[(*nb_rec)++] = r;
   }
-  virtual void setSupportSize(double count) {
-    assert(current_prop != -1);
-    (*logProp)[current_prop].second = count;
+  virtual void setSupportSize(unsigned int prop_id, double count) {
+    (*logProp)[prop_id].second = count;
   }
 
 public:
@@ -701,7 +688,6 @@ public:
       }
 
       if (!in_log || changed) {
-        heur.set_current_prop(prop_id);
         p.propagator().slndist(home,&heur);
       }
     }
