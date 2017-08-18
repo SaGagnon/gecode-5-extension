@@ -286,7 +286,8 @@ public:
 
     for_every_log_entry([&](unsigned int prop_id, double slnCnt,
                             unsigned int var_id, int val, double dens) {
-      if (dens>best_candidate.dens)
+      unsigned int pos = varpos(xD, var_id);
+      if (dens>best_candidate.dens && !x[pos].assigned() && x[pos].in(val))
           best_candidate = Best{var_id, val, dens};
     });
     assert(best_candidate.var_id != 0);
@@ -717,7 +718,8 @@ public:
       bool changed = true;
 
       if (in_log) {
-        changed = logProp[prop_id].first != activeProps[prop_id];
+        changed = logProp[prop_id].first*0.9 > activeProps[prop_id];
+//        changed = logProp[prop_id].first != activeProps[prop_id];
         if (changed) {
           // We discard the previous entries by setting the count to 0 (we
           // thus reuse previous allocated memory. The number of records can't
