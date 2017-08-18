@@ -71,15 +71,17 @@ public:
         v_edges[j] = edge_col[_node_edges[i][j]-1];
       distinct(*this, v_edges, opt.ipl());
       rel(*this, node_holes[i] == max(v_edges) - min(v_edges) + 1 - card);
+      rel(*this, node_holes[i] < card/16); // best = card/4
     }
 
     n_holes = IntVar(*this, 0, num_edges);
     rel(*this, n_holes == sum(node_holes));
+//    rel(*this, n_holes < 123);
 
     cbsbranch(*this, edge_col, CBSBranchingHeuristic::MAX_SD);
 //    branch(*this, edge_col, CBSBranchingHeuristic::MAX_SD);
     branch(*this, edge_col, INT_VAR_SIZE_MIN(), INT_VAL_SPLIT_MIN());
-//    branch(*this, edge_col, INT_VAR_AFC_MIN(opt.decay()), INT_VAL_SPLIT_MIN());
+//    branch(*this, edge_col, INT_VAR_AFC_MAX(opt.decay()), INT_VAL_SPLIT_MIN());
 //    branch(*this, edge_col, INT_VAR_ACTIVITY_SIZE_MAX(opt.decay()), INT_VAL_MIN());
   }
 
@@ -106,8 +108,16 @@ public:
 
 int main(int argc, char *argv[]) {
   InstanceOptions opt("Minimum Deficiency");
-  opt.ipl(IPL_DOM);
+  opt.ipl(IPL_BND);
+//  opt.c_d(20);
   opt.solutions(0);
+
+//  DSJC1000.5.col.gecode
+//  DSJC125.5.col.gecode
+//  DSJC500.5.col.gecode
+//  maison_5_7.col.gecode
+//  queen5_5.col.gecode
+
 
   opt.parse(argc,argv);
 
