@@ -256,14 +256,7 @@ public:
                             std::function<void(unsigned int, int)> f) {
     for (unsigned int i=0; i<x.size(); i++) {
       if (x[i].assigned()) continue;
-      bool instrumented = false;
-      for (SubscribedPropagators sp(x[i]); sp(); ++sp) {
-        if (sp.propagator().slndist(home,NULL)) {
-          instrumented = true;
-          break;
-        }
-      }
-      if (!instrumented) continue;
+      if (!xD.positions.isIn(x[i].id())) continue;
       for (Int::ViewValues<View> val(x[i]); val(); ++val)
         f(x[i].id(),val.val());
     }
@@ -545,17 +538,87 @@ template<class View> int ai<View>::nb_prop[SIZE]{};
 //template<class View> double ai<View>::sum_prop_card_prod[SIZE]{};
 
 
+
+class CBSPos : public SharedHandle {
+protected:
+  class CBSPosO : public SharedHandle::Object {
+  public:
+    class BoolArray : public SolnDistributionSize {
+    private:
+      unsigned int min_id{0};
+      unsigned int max_id{0};
+      bool *inBrancher{nullptr};
+    private:
+      int size() const { return max_id - min_id + 1; }
+      bool& get(unsigned int var_id) { return inBrancher[var_id - min_id]; }
+    public:
+//      BoolArray() = default;
+      template<class View>
+      explicit BoolArray(const ViewArray<View>& x) {
+        auto minmax = std::minmax_element(x.begin(), x.end(), [](auto a, auto b) {
+          return a.id() < b.id();
+        });
+        min_id = minmax.first->id();
+        max_id = minmax.second->id();
+
+        inBrancher = heap.alloc<bool>(size());
+        for (int i=0; i<size(); i++)
+          inBrancher[i] = false;
+
+        for (auto var : x)
+          get(var.id()) = true;
+      }
+      BoolArray(const BoolArray& o)
+        : min_id(o.min_id), max_id(o.max_id) {
+        inBrancher = heap.alloc<bool>(size());
+        for (int i=0; i<size(); i++)
+          inBrancher[i] = o.inBrancher[i];
+      }
+      ~BoolArray() {
+        std::cout << "CECI DOIT APPARAITRE" << std::endl;
+        heap.free(inBrancher, size());
+      }
+      virtual bool varInBrancher(unsigned int var_id) {
+        assert(var_id-min_id >= 0);
+        assert(var_id-min_id < size());
+        return get(var_id);
+      }
+    };
+    BoolArray bool_array;
+  public:
+//    CBSPosO() = default;
+    template<class View>
+    explicit CBSPosO(const ViewArray<View>& x) : bool_array(x) {}
+    CBSPosO(const CBSPosO& o) : bool_array(o.bool_array) {}
+    virtual Object* copy() const { return new CBSPosO(*this); }
+    ~CBSPosO() override = default;
+  };
+public:
+  template<class View>
+  explicit CBSPos(const ViewArray<View>& x) {
+    assert(object() == nullptr);
+    object(new CBSPosO(x));
+  }
+  CBSPosO::BoolArray& getObject() const {
+    return static_cast<CBSPosO*>(object())->bool_array;
+  }
+};
+
+
+
+
 template<class View, template<class> class BranchingHeur>
 class CBSBrancher : public Brancher {
   typedef typename BranchingHeuristic<View>::Candidate Candidate;
 protected:
   ViewArray<View> x;
+  CBSPos cbs_pos;
   BranchingHeur<View> heur;
   LogDensity logDensity;
   LogProp logProp;
 public:
   CBSBrancher(Home home, ViewArray<View>& x0)
-    : Brancher(home), x(x0), heur(home,x0),
+    : Brancher(home), x(x0), cbs_pos(x0), heur(home,x0),
       logDensity(LogDensity::size_type(), LogDensity::hasher(),
                  LogDensity::key_equal(), LogDensity::allocator_type(home)),
       logProp(LogProp::size_type(), LogProp::hasher(),
@@ -575,7 +638,7 @@ public:
     return sizeof(*this);
   }
   CBSBrancher(Space& home, bool share, CBSBrancher& b)
-    : Brancher(home,share,b), heur(home,share,b.heur),
+    : Brancher(home,share,b), cbs_pos(b.cbs_pos), heur(home,share,b.heur),
       logDensity(b.logDensity.begin(), b.logDensity.end(),
                  LogDensity::size_type(), LogDensity::hasher(),
                  LogDensity::key_equal(), LogDensity::allocator_type(home)),
@@ -598,26 +661,9 @@ public:
   }
   virtual bool status(const Space& home) const {
     Space& h = const_cast<Space&>(home);
-
-    /*
-     * It is possible for a propagator with cbs instrumentation to be active
-     * without any variable left to branch on in CBSBrancher.
-     * TODO: Continuer explication ou corriger problème...
-     */
-
-    std::set<int> active_prop_ids;
     for (Propagators p(h, PropagatorGroup::all); p(); ++p)
-      if (p.propagator().slndist(h, NULL))
-        active_prop_ids.insert(p.propagator().id());
-
-    for (int i=0; i<x.size(); i++) {
-      if (x[i].assigned()) continue;
-      View& _x = const_cast<View&>(x[i]);
-      for (SubscribedPropagators sp(_x); sp(); ++sp) {
-        if (active_prop_ids.find(sp.propagator().id()) != active_prop_ids.end())
-          return true;
-      }
-    }
+      if (p.propagator().slndistsize(&cbs_pos.getObject()) > 0)
+        return true;
     return false;
   }
   virtual const Choice* choice(Space& home) {
@@ -630,7 +676,7 @@ public:
     // TODO: Commentaire
     __gnu_cxx::hash_map<unsigned int, int> activeProps;
     for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
-      int log_size = p.propagator().slndist(home,NULL);
+      int log_size = p.propagator().slndistsize(&cbs_pos.getObject());
       // If the propagator supports slndist and has records
       if (log_size != 0) {
         assert(log_size > 1);
@@ -663,7 +709,8 @@ public:
     heur.set_log_density(&logDensity);
     heur.set_log_sln_cnt(&logProp);
     for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
-      if (!p.propagator().slndist(home,NULL)) continue;
+      if (p.propagator().slndistsize(&cbs_pos.getObject()) == 0) continue;
+
       unsigned int prop_id = p.propagator().id();
       // Propagator already in the log?
       bool in_log = logDensity.find(prop_id) != logDensity.end();
