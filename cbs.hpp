@@ -556,7 +556,7 @@ protected:
 //      BoolArray() = default;
       template<class View>
       explicit BoolArray(const ViewArray<View>& x) {
-        auto minmax = std::minmax_element(x.begin(), x.end(), [](auto a, auto b) {
+        auto minmax = std::minmax_element(x.begin(), x.end(), [](View a, View b) {
           return a.id() < b.id();
         });
         min_id = minmax.first->id();
