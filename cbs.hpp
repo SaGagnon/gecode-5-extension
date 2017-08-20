@@ -580,8 +580,8 @@ protected:
         heap.free(inBrancher, size());
       }
       virtual bool varInBrancher(unsigned int var_id) {
-        assert(var_id-min_id >= 0);
-        assert(var_id-min_id < size());
+        if (var_id-min_id < 0) return false;
+        if (var_id-min_id >= size()) return false;
         return get(var_id);
       }
     };
@@ -718,7 +718,7 @@ public:
       bool changed = true;
 
       if (in_log) {
-        changed = logProp[prop_id].first*0.9 > activeProps[prop_id];
+        changed = logProp[prop_id].first*0.95 > activeProps[prop_id];
 //        changed = logProp[prop_id].first != activeProps[prop_id];
         if (changed) {
           // We discard the previous entries by setting the count to 0 (we
