@@ -1,0 +1,40 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Magic Square Instance Format         %
+%                                      %
+% Gilles Pesant            August 2011 %
+%                                      %
+% gilles.pesant@cirrelt.ca             %
+%            						   %
+% File modified by Arthur Godet        %
+% August 2017			               %
+% arth.godet@gmail.com	               %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+squareSize 
+nb of fixed cells
+for each fixed cell
+  row column value
+
+  
+The instances used to create the partial assignment for n=5 are the following :
+1 -> 51
+2 -> 102
+3 -> 81
+4 -> 20
+5 -> 246
+6 -> 29
+7 -> 39
+8 -> 223
+9 -> 152
+10 -> 78
+11 -> 194
+12 -> 7
+13 -> 226
+14 -> 89
+15 -> 161
+16 -> 9
+17 -> 54
+18 -> 90
+19 -> 122
+20 -> 113
+
