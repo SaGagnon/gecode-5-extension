@@ -166,7 +166,7 @@ namespace {
     }
   public:
     /// Initialize
-    Spec(const char* s) : data(find(s)), l(0), u(0) {
+    Spec(int inst) : data(bpp[inst]), l(0), u(0) {
       if (valid()) {
         l = clower(); u = cupper();
       }
@@ -428,9 +428,9 @@ public:
     BRANCH_CBS_MAX_SD
   };
   /// Actual model
-  BinPacking(const InstanceOptions& opt)
+  BinPacking(const SizeOptions& opt)
     : IntMinimizeScript(opt),
-      spec(opt.instance()),
+      spec(opt.size()),
       load(*this, spec.upper(), 0, spec.capacity()),
       bin(*this, spec.items(), 0, spec.upper()-1),
       bins(*this, spec.lower(), spec.upper()) {
@@ -557,7 +557,7 @@ public:
  */
 int
 main(int argc, char* argv[]) {
-  InstanceOptions opt("BinPacking");
+  SizeOptions opt("BinPacking");
   opt.model(BinPacking::MODEL_PACKING);
   opt.model(BinPacking::MODEL_NAIVE, "naive",
             "use naive model (decomposition)");
@@ -567,14 +567,14 @@ main(int argc, char* argv[]) {
   opt.branching(BinPacking::BRANCH_NAIVE, "naive");
   opt.branching(BinPacking::BRANCH_CDBF, "cdbf");
   opt.branching(BinPacking::BRANCH_CBS_MAX_SD, "cbs_max_sd");
-  opt.instance(name[0]);
+  opt.size(0);
   opt.solutions(0);
   opt.parse(argc,argv);
-  if (!Spec(opt.instance()).valid()) {
+  if (!Spec(opt.size()).valid()) {
     std::cerr << "Error: unkown instance" << std::endl;
     return 1;
   }
-  IntMinimizeScript::run<BinPacking,BAB,InstanceOptions>(opt);
+  IntMinimizeScript::run<BinPacking,BAB,SizeOptions>(opt);
   return 0;
 }
 
