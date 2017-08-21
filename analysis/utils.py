@@ -131,11 +131,12 @@ def print_coefs(clf, features):
 
 # TEMP
 
-def solved_graph(df, xcol, xlabel=""):
-    for heur in df.reset_index()['heur'].unique():
-        if heur == 'cbs_a_avg_sd': continue
+def solved_graph(df, xcol, xlabel="", heur_to_plot=[]):
+    if heur_to_plot == []:
+        heur_to_plot = df.reset_index()['heur'].unique()
+    for heur in heur_to_plot:
         x = df.loc[heur].dropna().sort_values(by=xcol)[xcol].values
-        y = [i/_len*100 for i,_ in enumerate(x)]
+        y = [i/len(x)*100 for i,_ in enumerate(x)]
 
 
         plt.plot(x,y, label=heur, linewidth=3)
@@ -148,14 +149,14 @@ def solved_graph(df, xcol, xlabel=""):
 
     plt.legend(loc='lower right')
     
-def failures_time_solved(path, title):
+def failures_time_solved(path, title,**kwargs):
     df = pd.read_csv(path, sep=' ', names=['heur', 'ex', 'failures', 'time'])
     df = df.replace(-1, np.nan)
     df = df.set_index(['heur', 'ex'])
 
-    plt.figure(figsize=(12,4))
+    plt.figure(figsize=(16,7))
     plt.suptitle(title)
     plt.subplot(1,2,1)
-    solved_graph(df, 'failures', 'Number of failures')
+    solved_graph(df, 'failures', 'Number of failures', **kwargs)
     plt.subplot(1,2,2)
-    solved_graph(df, 'time', 'Time (ms)')
+    solved_graph(df, 'time', 'Time (ms)', **kwargs)
