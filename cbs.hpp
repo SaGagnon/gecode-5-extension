@@ -612,14 +612,16 @@ template<class View, template<class> class BranchingHeur>
 class CBSBrancher : public Brancher {
   typedef typename BranchingHeuristic<View>::Candidate Candidate;
 protected:
+  const double recomputation_ratio;
   ViewArray<View> x;
   CBSPos cbs_pos;
   BranchingHeur<View> heur;
   LogDensity logDensity;
   LogProp logProp;
 public:
-  CBSBrancher(Home home, ViewArray<View>& x0)
-    : Brancher(home), x(x0), cbs_pos(x0), heur(home,x0),
+  CBSBrancher(Home home, ViewArray<View>& x0, double recomputation_ratio0)
+    : Brancher(home), recomputation_ratio(recomputation_ratio0),
+      x(x0), cbs_pos(x0), heur(home,x0),
       logDensity(LogDensity::size_type(), LogDensity::hasher(),
                  LogDensity::key_equal(), LogDensity::allocator_type(home)),
       logProp(LogProp::size_type(), LogProp::hasher(),
@@ -627,8 +629,10 @@ public:
     // Because we must call the destructor of aAvgSD
     home.notice(*this,AP_DISPOSE);
   }
-  static void post(Home home, ViewArray<View>& x) {
-    (void) new (home) CBSBrancher(home,x);
+  static void post(Home home, ViewArray<View>& x,
+                   double recomputation_ratio=1) {
+    assert(recomputation_ratio > 0 && recomputation_ratio <= 1);
+    (void) new (home) CBSBrancher(home,x,recomputation_ratio);
   }
   virtual size_t dispose(Space& home) {
     home.ignore(*this, AP_DISPOSE);
@@ -639,7 +643,8 @@ public:
     return sizeof(*this);
   }
   CBSBrancher(Space& home, bool share, CBSBrancher& b)
-    : Brancher(home,share,b), cbs_pos(b.cbs_pos), heur(home,share,b.heur),
+    : Brancher(home,share,b), recomputation_ratio(b.recomputation_ratio),
+      cbs_pos(b.cbs_pos), heur(home,share,b.heur),
       logDensity(b.logDensity.begin(), b.logDensity.end(),
                  LogDensity::size_type(), LogDensity::hasher(),
                  LogDensity::key_equal(), LogDensity::allocator_type(home)),
@@ -718,8 +723,8 @@ public:
       bool changed = true;
 
       if (in_log) {
-        changed = logProp[prop_id].first*0.95 > activeProps[prop_id];
-//        changed = logProp[prop_id].first != activeProps[prop_id];
+        changed =
+          logProp[prop_id].first*recomputation_ratio > activeProps[prop_id];
         if (changed) {
           // We discard the previous entries by setting the count to 0 (we
           // thus reuse previous allocated memory. The number of records can't
@@ -813,7 +818,7 @@ void _cbsbranch(Home home, const T& x, CBSBranchingHeuristic s) {
 
   switch(s) {
     case MAX_SD:
-      CBSBrancher<View,maxSD>::post(home,y);
+      CBSBrancher<View,maxSD>::post(home,y,1);
       break;
     case MAX_REL_SD:
       GECODE_NEVER;
