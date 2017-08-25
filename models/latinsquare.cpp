@@ -177,24 +177,24 @@ main(int argc, char* argv[]) {
 //  opt.c_d(0); // Important pour appeler le destructeur de tous les nodes SAT
 //  opt.mode(SM_GIST);
 
-  for (int i=0; i<argc; i++) {
-    std::string curr_param = argv[i];
-    if (curr_param == "-a_avg_sd")
-      a_avg_sd_VALUE = std::stod(argv[i+1]);
-    else if (curr_param == "-max_rel_sd")
-      max_rel_sd_VALUE = std::stod(argv[i+1]);
-    else if (curr_param == "-intercept")
-      intercept_VALUE = std::stod(argv[i+1]);
-    #ifdef SQL
-    else if (curr_param == "-path_db")
-      path_db = argv[i+1];
-    else if (curr_param == "-exec_type") {
-      CBSDB::EXEC_TYPE e = (CBSDB::EXEC_TYPE) std::stoi(argv[i+1]);
-      assert(e >= 0 && e < CBSDB::LEN);
-      CBSDB::set_exec_type(e);
-    }
-    #endif
-  }
+//  for (int i=0; i<argc; i++) {
+//    std::string curr_param = argv[i];
+//    if (curr_param == "-a_avg_sd")
+//      a_avg_sd_VALUE = std::stod(argv[i+1]);
+//    else if (curr_param == "-max_rel_sd")
+//      max_rel_sd_VALUE = std::stod(argv[i+1]);
+//    else if (curr_param == "-intercept")
+//      intercept_VALUE = std::stod(argv[i+1]);
+//    #ifdef SQL
+//    else if (curr_param == "-path_db")
+//      path_db = argv[i+1];
+//    else if (curr_param == "-exec_type") {
+//      CBSDB::EXEC_TYPE e = (CBSDB::EXEC_TYPE) std::stoi(argv[i+1]);
+//      assert(e >= 0 && e < CBSDB::LEN);
+//      CBSDB::set_exec_type(e);
+//    }
+//    #endif
+//  }
 
   opt.branching(LatinSquare::BRANCH_CBS_MAX_SD);
   opt.branching(LatinSquare::BRANCH_NONE, "none", "Branch on rows/columns in order");

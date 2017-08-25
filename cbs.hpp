@@ -10,15 +10,6 @@
 #include <map>
 #include <unordered_map>
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <errno.h>
-
-
 #include <fstream>
 #include <iostream>
 #include <set>
@@ -30,18 +21,89 @@
 
 using namespace Gecode;
 
-double a_avg_sd_VALUE;
-double max_rel_sd_VALUE;
-double intercept_VALUE;
+using PropId  = unsigned int;
+using VarId   = unsigned int;
+using Val     = int;
+using Dens    = double;
+using SlnCnt  = double;
 
-struct Record { unsigned int var_id; int val; double density; };
-typedef __gnu_cxx::hash_map< unsigned int, std::pair<size_t,Record*>,
-  __gnu_cxx::hash<unsigned int>, __gnu_cxx::equal_to<unsigned int>,
-  Gecode::space_allocator<std::pair<size_t,Record*>> > LogDensity;
+class PropInfo {
+public:
+  struct Record {
+    VarId var_id;
+    Val val;
+    Dens dens;
+  };
+private:
+  struct Records {
+    // During the insertion in *records, we need to keep track of the current
+    // position. At the end, curr_pos == records_size
+    unsigned int pos{0};
 
-typedef __gnu_cxx::hash_map< unsigned int, std::pair<size_t, double>,
-  __gnu_cxx::hash<unsigned int>, __gnu_cxx::equal_to<unsigned int>,
-  Gecode::space_allocator<std::pair<size_t, double> > > LogProp;
+    // Density information for every (var,val) pair
+    Record *x{nullptr};
+
+    // Total number of (var,val) pair the propagator shares with the brancher
+    // and needs to communicate.
+    size_t size{0};
+  } records;
+
+  SlnCnt slnCount{0};
+public:
+  PropInfo() = default;
+
+  PropInfo(Space& home, size_t n_records) {
+    records.x = home.alloc<Record>(n_records);
+    records.size = n_records;
+  }
+
+  PropInfo(Space& home, const PropInfo& o)
+    : records(o.records), slnCount(o.slnCount) {
+    records.x = home.alloc<Record>(records.size);
+    memcpy(records.x, o.records.x, records.size * sizeof(Record));
+  }
+
+  Record& operator[](unsigned int i) {
+    assert(records.x != nullptr);
+    assert(i < records.size);
+    return records.x[i];
+  }
+
+  Record operator[](unsigned int i) const {
+    return const_cast<PropInfo*>(this)->operator[](i);
+  }
+
+  size_t getNbRecords() const { return records.size; }
+
+  SlnCnt getSlnCnt() const { return slnCount; }
+  void setSlnCnt(SlnCnt cnt) {
+    assert(cnt > 1);
+    slnCount = cnt;
+  }
+
+  void insert_record(const Record&& r) {
+    assert(records.x != nullptr);
+    assert(r.dens>0 && r.dens<1);
+    records.x[records.pos] = r;
+    records.pos++;
+    assert(records.size >= records.pos);
+  }
+
+  void reuse_space(size_t s) {
+    // We discard the previous entries by setting the count to 0 (we
+    // thus reuse previous allocated memory. The number of records can't
+    // grow).
+    records.pos = 0;
+    records.size = s;
+  }
+
+};
+
+
+typedef __gnu_cxx::hash_map<PropId, PropInfo,
+  __gnu_cxx::hash<PropId>, __gnu_cxx::equal_to<PropId>,
+  Gecode::space_allocator<PropInfo> >
+  LogProp;
 
 class VarIdToPos : public SharedHandle {
 protected:
@@ -125,11 +187,11 @@ struct VADesc {
   int width;
 };
 
-unsigned int varvalpos(const VADesc& xD, unsigned int var_id, int val) {
+unsigned int varvalpos(const VADesc& xD, VarId var_id, Val val) {
   return xD.positions[var_id] * xD.width + val - xD.minVal;
 }
 //
-unsigned int varpos(const VADesc& xD, unsigned int var_id) {
+unsigned int varpos(const VADesc& xD, VarId var_id) {
   return xD.positions[var_id];
 }
 
@@ -177,14 +239,13 @@ public:
   // A choice for branching
   struct Candidate {
     unsigned int idx; // Index of the variable in x
-    int val; // Value in the domain of the variable
+    Val val; // Value in the domain of the variable
   };
 protected:
   // Array of variables we are using for branching
   ViewArray<View> x;
   VADesc xD;
   // The log in which the set method is currently inserting
-  LogDensity *logDensity;
   LogProp *logProp;
 public:
   /**
@@ -209,52 +270,41 @@ public:
     : xD(home,share,bh.xD) {
     x.update(home,share,bh.x);
   }
-  // Method for specifying the logDensity the set() method uses
-  void set_log_density(LogDensity *_logDensity) {
-    assert(_logDensity != NULL);
-    logDensity = _logDensity;
-  }
-  void set_log_sln_cnt(LogProp *_logSlnCnt) {
-    assert(_logSlnCnt != NULL);
-    logProp = _logSlnCnt;
+  // Method for specifying the logProp the set() method uses
+  void set_log_prop(LogProp *logProp0) {
+    assert(logProp0 != nullptr);
+    logProp = logProp0;
   }
   // Method used by all propagators for communicating calculated densities for
   // each of its (variable,value) pair.
-  virtual void setMarginalDistribution(unsigned int prop_id,
-                                       unsigned int var_id, int val,
-                                       double density) {
+  virtual void setMarginalDistribution(PropId prop_id, VarId var_id, Val val,
+                                       Dens density) {
     assert(var_id != 0);
     if (!xD.positions.isIn(var_id)) return;
     assert(!x[xD.positions[var_id]].assigned());
-    assert(density>0 && density<1);
     assert(x[xD.positions[var_id]].in(val));
-    Record r; r.var_id=var_id; r.val=val; r.density=density;
-    size_t *nb_rec = &(*logDensity)[prop_id].first;
-    (*logDensity)[prop_id].second[(*nb_rec)++] = r;
+    assert((*logProp).find(prop_id) != (*logProp).end());
+
+    (*logProp)[prop_id].insert_record(PropInfo::Record{var_id, val, density});
   }
-  virtual void setSupportSize(unsigned int prop_id, double count) {
-    (*logProp)[prop_id].second = count;
+  virtual void setSupportSize(PropId prop_id, SlnCnt count) {
+    (*logProp)[prop_id].setSlnCnt(count);
   }
 
 public:
-  void for_every_log_entry(
-    std::function<void(unsigned int,double,unsigned int, int, double)> f) {
-    // For every propagator in the log
-    for (auto prop : *logDensity) {
-      unsigned int prop_id = prop.first;
-      double slnCnt = (*logProp)[prop_id].second;
-      size_t nb_records = prop.second.first;
-      Record *records = prop.second.second;
-      for (unsigned int i=0; i<nb_records; ++i) {
-        Record *r = &records[i];
-        f(prop_id, slnCnt, r->var_id, r->val, r->density);
+  void for_every_log_entry(const std::function<void(PropId,SlnCnt,VarId,Val,Dens)>& f) {
+    for (const auto& elem : *logProp) {
+      auto prop_id = elem.first;
+      auto prop = &elem.second;
+      for (int i=0; i<prop->getNbRecords(); i++) {
+        auto r = (*prop)[i];
+        f(prop_id, prop->getSlnCnt(), r.var_id, r.val, r.dens);
       }
     }
   }
 
-  void for_every_varIdx_val(Space& home,
-                            std::function<void(unsigned int, int)> f) {
-    for (unsigned int i=0; i<x.size(); i++) {
+  void for_every_varIdx_val(Space& home, const std::function<void(VarId, Val)>& f) {
+    for (int i=0; i<x.size(); i++) {
       if (x[i].assigned()) continue;
       if (!xD.positions.isIn(x[i].id())) continue;
       for (Int::ViewValues<View> val(x[i]); val(); ++val)
@@ -271,7 +321,6 @@ public:
   using BranchingHeuristic<View>::xD; \
   using BranchingHeuristic<View>::for_every_log_entry; \
   using BranchingHeuristic<View>::for_every_varIdx_val; \
-  using BranchingHeuristic<View>::logDensity; \
   using BranchingHeuristic<View>::logProp; \
   typedef typename BranchingHeuristic<View>::Candidate Candidate;
 
@@ -281,17 +330,16 @@ class maxSD : public BranchingHeuristic<View> {
   USING_BH
 public:
   virtual Candidate getChoice(Space& home) {
-    struct Best {unsigned int var_id; int val; double dens; }
-      best_candidate{0,0,0};
+    PropInfo::Record best{0,0,0};
 
-    for_every_log_entry([&](unsigned int prop_id, double slnCnt,
-                            unsigned int var_id, int val, double dens) {
+    for_every_log_entry([&](PropId prop_id, SlnCnt slnCnt,
+                            VarId var_id, Val val, SlnCnt dens) {
       unsigned int pos = varpos(xD, var_id);
-      if (dens>best_candidate.dens && !x[pos].assigned() && x[pos].in(val))
-          best_candidate = Best{var_id, val, dens};
+      if (dens>best.dens && !x[pos].assigned() && x[pos].in(val))
+          best = {var_id, val, dens};
     });
-    assert(best_candidate.var_id != 0);
-    return Candidate{xD.positions[best_candidate.var_id],best_candidate.val};
+    assert(best.var_id != 0);
+    return {xD.positions[best.var_id],best.val};
   }
 };
 
@@ -325,24 +373,24 @@ public:
       prop_count[i] = 0;
     }
 
-    for_every_log_entry([&](unsigned int prop_id, double slnCnt,
-                            unsigned int var_id, int val, double dens) {
+    for_every_log_entry([&](PropId prop_id, SlnCnt slnCnt,
+                            VarId var_id, Val val, Dens dens) {
       unsigned int idx = varvalpos(xD,var_id,val);
       tot_dens[idx] += dens;
       prop_count[idx] += 1;
     });
 
-    struct Best { unsigned int var_id; int val; double dens_moy;
-    } best_candidate{0,0,0};
+    struct Best{ VarId var_id; Val val; Dens dens_moy; }
+      best{0,0,0};
 
     for_every_varIdx_val(home, [&](unsigned var_id, int val) {
       unsigned int idx = varvalpos(xD,var_id,val);
-      double dens_moy = tot_dens[idx] / (double)prop_count[idx];
-      if (dens_moy > best_candidate.dens_moy)
-        best_candidate = Best{var_id,val,dens_moy};
+      Dens dens_moy = tot_dens[idx] / (double)prop_count[idx];
+      if (dens_moy > best.dens_moy)
+        best = {var_id,val,dens_moy};
     });
 
-    return Candidate{xD.positions[best_candidate.var_id],best_candidate.val};
+    return {xD.positions[best.var_id],best.val};
   }
 };
 
@@ -546,12 +594,12 @@ protected:
   public:
     class BoolArray : public SolnDistributionSize {
     private:
-      unsigned int min_id{0};
-      unsigned int max_id{0};
+      VarId min_id{0};
+      VarId max_id{0};
       bool *inBrancher{nullptr};
     private:
       int size() const { return max_id - min_id + 1; }
-      bool& get(unsigned int var_id) { return inBrancher[var_id - min_id]; }
+      bool& get(VarId var_id) { return inBrancher[var_id - min_id]; }
     public:
 //      BoolArray() = default;
       template<class View>
@@ -579,7 +627,7 @@ protected:
         std::cout << "CECI DOIT APPARAITRE" << std::endl;
         heap.free(inBrancher, size());
       }
-      virtual bool varInBrancher(unsigned int var_id) {
+      virtual bool varInBrancher(VarId var_id) {
         if (var_id-min_id < 0) return false;
         if (var_id-min_id >= size()) return false;
         return get(var_id);
@@ -616,14 +664,11 @@ protected:
   ViewArray<View> x;
   CBSPos cbs_pos;
   BranchingHeur<View> heur;
-  LogDensity logDensity;
   LogProp logProp;
 public:
   CBSBrancher(Home home, ViewArray<View>& x0, double recomputation_ratio0)
     : Brancher(home), recomputation_ratio(recomputation_ratio0),
       x(x0), cbs_pos(x0), heur(home,x0),
-      logDensity(LogDensity::size_type(), LogDensity::hasher(),
-                 LogDensity::key_equal(), LogDensity::allocator_type(home)),
       logProp(LogProp::size_type(), LogProp::hasher(),
                 LogProp::key_equal(), LogProp::allocator_type(home)) {
     // Because we must call the destructor of aAvgSD
@@ -645,21 +690,12 @@ public:
   CBSBrancher(Space& home, bool share, CBSBrancher& b)
     : Brancher(home,share,b), recomputation_ratio(b.recomputation_ratio),
       cbs_pos(b.cbs_pos), heur(home,share,b.heur),
-      logDensity(b.logDensity.begin(), b.logDensity.end(),
-                 LogDensity::size_type(), LogDensity::hasher(),
-                 LogDensity::key_equal(), LogDensity::allocator_type(home)),
       logProp(b.logProp.begin(), b.logProp.end(),
                  LogProp::size_type(), LogProp::hasher(),
                  LogProp::key_equal(), LogProp::allocator_type(home)) {
     x.update(home,share,b.x);
-
-    for (LogDensity::iterator it=logDensity.begin(); it!=logDensity.end(); ++it) {
-      unsigned int prop_id = it->first;
-      size_t count = b.logDensity[prop_id].first;
-      if (count == 0) continue;
-      it->second.second = home.alloc<Record>(count);
-      memcpy(it->second.second, b.logDensity[prop_id].second, count*sizeof(Record));
-    }
+    for (auto& elem : logProp)
+      elem.second = PropInfo(home, b.logProp[elem.first]);
   }
   virtual Brancher* copy(Space& home, bool share) {
 //    CBSBrancher *ret = home.alloc<CBSBrancher>(1);
@@ -667,9 +703,17 @@ public:
   }
   virtual bool status(const Space& home) const {
     Space& h = const_cast<Space&>(home);
-    for (Propagators p(h, PropagatorGroup::all); p(); ++p)
-      if (p.propagator().slndistsize(&cbs_pos.getObject()) > 0)
+    for (Propagators p(h, PropagatorGroup::all); p(); ++p) {
+      // Sum of domains of all variable in propagator
+      unsigned int domAggr;
+      // Same, but for variables that are also in this brancher.
+      unsigned int domAggrB;
+      p.propagator().slndistsize(&cbs_pos.getObject(), domAggr, domAggrB);
+      // If there's still a propagator that has an unassigned variable that is
+      // also in the brancher, we tell our brancher has still work to do.
+      if (domAggrB > 0)
         return true;
+    }
     return false;
   }
   virtual const Choice* choice(Space& home) {
@@ -678,73 +722,76 @@ public:
 //    #endif
 
     // Active propagators and the size we need for their log.
-    // We considere a propagator as "active" only if he supports slndist().
-    // TODO: Commentaire
-    __gnu_cxx::hash_map<unsigned int, int> activeProps;
+    // We considere a propagator as "active" only if
+    // - it supports slndist()
+    // - it has unassigned variables that are also in the brancher
+    __gnu_cxx::hash_map<PropId, unsigned int> activeProps;
     for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
-      int log_size = p.propagator().slndistsize(&cbs_pos.getObject());
-      // If the propagator supports slndist and has records
+      unsigned int domAggr, log_size;
+      p.propagator().slndistsize(&cbs_pos.getObject(), domAggr, log_size);
       if (log_size != 0) {
-        assert(log_size > 1);
         activeProps[p.propagator().id()] = log_size;
       }
     }
 
     // We delete log elements corresponding to non active propagators
     {
-      std::vector<unsigned int> propsToDelete;
+      std::vector<PropId> propsToDelete;
+      for(const auto& kv : logProp)
+        if (activeProps.find(kv.first) == activeProps.end())
+          propsToDelete.push_back(kv.first);
 
-      // Propagators to delete (not active and in log)
-      for (LogDensity::iterator it = logDensity.begin(); it != logDensity.end(); ++it)
-        if (activeProps.find(it->first) == activeProps.end())
-          propsToDelete.push_back(it->first);
-
-      // We delete them from the log
-      for (auto it = propsToDelete.begin();
-           it != propsToDelete.end(); ++it) {
-        unsigned int prop_id = *it;
-        // TODO: Trouver une manière de free comme il le faut (avec vrai grandeur, pas nb element en ce moment)...
-//        home.free(log[prop_id].second, log[prop_id].first);
-        logDensity.erase(prop_id);
+      for (auto prop_id : propsToDelete)
         logProp.erase(prop_id);
-      }
     }
+
+//    assert(logDensity.size() == logProp.size());
+//    double __n_prop_in_log = logDensity.size();
+//    double __C=0, __R=0, __K=0;
 
     // We specify the log that will be modified when the propagators use the
     // CBS::set()
-    heur.set_log_density(&logDensity);
-    heur.set_log_sln_cnt(&logProp);
+    heur.set_log_prop(&logProp);
     for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
-      if (p.propagator().slndistsize(&cbs_pos.getObject()) == 0) continue;
+      unsigned int totDomSize, domSizeBrancherVar;
+      p.propagator().slndistsize(&cbs_pos.getObject(),
+                                 totDomSize, domSizeBrancherVar);
 
-      unsigned int prop_id = p.propagator().id();
+      if (domSizeBrancherVar == 0) continue;
+
+      auto prop_id = p.propagator().id();
+      auto prop_size = activeProps[prop_id];
+
       // Propagator already in the log?
-      bool in_log = logDensity.find(prop_id) != logDensity.end();
+      bool in_log = logProp.find(prop_id) != logProp.end();
       bool changed = true;
 
       if (in_log) {
-        changed =
-          logProp[prop_id].first*recomputation_ratio > activeProps[prop_id];
-        if (changed) {
-          // We discard the previous entries by setting the count to 0 (we
-          // thus reuse previous allocated memory. The number of records can't
-          // grow).
-          logDensity[prop_id].first = 0;
-          // TODO: Comment
-          logProp[prop_id].first = (size_t)activeProps[prop_id];
-        }
+        auto prop = &logProp[prop_id];
+        changed = prop->getNbRecords()*recomputation_ratio > prop_size;
+        if (changed)
+          prop->reuse_space(prop_size);
       } else {
-        // Otherwise, we need to allocate space for the records of the
-        // new propagator
-        logDensity[prop_id] =
-          std::make_pair(0, home.alloc<Record>(activeProps[prop_id]));
-        logProp[prop_id] = std::make_pair(activeProps[prop_id], 0);
+        // We create a new propagator
+        logProp[prop_id] = PropInfo(home, prop_size);
       }
+
+//      if (!in_log)
+//        __C++;
+//      else {
+//        if (!changed)
+//          __K++;
+//        else
+//          __R++;
+//      }
 
       if (!in_log || changed) {
         p.propagator().slndist(home,&heur);
       }
     }
+
+//    assert(__R+__K==__n_prop_in_log);
+//    std::cout << __n_prop_in_log << " " << __K/__n_prop_in_log << std::endl;
 
 //    #ifdef SQL
 //    // TODO: Mettre un flag qui fait ça ou non ici...
