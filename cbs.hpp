@@ -331,11 +331,11 @@ class maxSD : public BranchingHeuristic<View> {
 public:
   virtual Candidate getChoice(Space& home) {
     PropInfo::Record best{0,0,0};
-
     for_every_log_entry([&](PropId prop_id, SlnCnt slnCnt,
                             VarId var_id, Val val, SlnCnt dens) {
       unsigned int pos = varpos(xD, var_id);
-      if (dens>best.dens && !x[pos].assigned() && x[pos].in(val))
+      if (!x[pos].assigned() && x[pos].in(val))
+        if (dens > best.dens || (dens == best.dens && var_id < best.var_id))
           best = {var_id, val, dens};
     });
     assert(best.var_id != 0);
