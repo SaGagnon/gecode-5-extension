@@ -3,3 +3,5 @@ cmake-build-debug/
 cmake-build-release/
 *.swp
 analysis/.ipynb_checkpoints/
+analysis/
+!analysis/utils.py
