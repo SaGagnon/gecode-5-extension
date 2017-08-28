@@ -49,16 +49,24 @@ private:
   } records;
 
   SlnCnt slnCount{0};
+
+  // Sum of all domains of non assigned variable in the propagator. We need this
+  // information along with records.size because we can't rely only on
+  // records.size to know how many changes occured in the propagator (if we
+  // want to trigger recomputation with a changes pourcentage cutoff).
+  size_t domAggr{0};
+
 public:
   PropInfo() = default;
 
-  PropInfo(Space& home, size_t n_records) {
-    records.x = home.alloc<Record>(n_records);
-    records.size = n_records;
+  PropInfo(Space& home, size_t domAggr0, size_t domAggrB)
+    : domAggr(domAggr0) {
+    records.x = home.alloc<Record>(domAggrB);
+    records.size = domAggrB;
   }
 
   PropInfo(Space& home, const PropInfo& o)
-    : records(o.records), slnCount(o.slnCount) {
+    : domAggr(o.domAggr), records(o.records), slnCount(o.slnCount) {
     records.x = home.alloc<Record>(records.size);
     memcpy(records.x, o.records.x, records.size * sizeof(Record));
   }
@@ -73,7 +81,8 @@ public:
     return const_cast<PropInfo*>(this)->operator[](i);
   }
 
-  size_t getNbRecords() const { return records.size; }
+  size_t getDomAggr() const { return domAggr; }
+  size_t getDomAggrB() const { return records.size; }
 
   SlnCnt getSlnCnt() const { return slnCount; }
   void setSlnCnt(SlnCnt cnt) {
@@ -296,7 +305,7 @@ public:
     for (const auto& elem : *logProp) {
       auto prop_id = elem.first;
       auto prop = &elem.second;
-      for (int i=0; i<prop->getNbRecords(); i++) {
+      for (int i=0; i<prop->getDomAggrB(); i++) {
         auto r = (*prop)[i];
         f(prop_id, prop->getSlnCnt(), r.var_id, r.val, r.dens);
       }
@@ -717,20 +726,17 @@ public:
     return false;
   }
   virtual const Choice* choice(Space& home) {
-//    #ifdef SQL
-//    CBSDB::new_node();
-//    #endif
-
     // Active propagators and the size we need for their log.
     // We considere a propagator as "active" only if
     // - it supports slndist()
     // - it has unassigned variables that are also in the brancher
-    __gnu_cxx::hash_map<PropId, unsigned int> activeProps;
+    struct Psize { size_t domAggr; size_t domAggrB; };
+    __gnu_cxx::hash_map<PropId, Psize > activeProps;
     for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
-      unsigned int domAggr, log_size;
-      p.propagator().slndistsize(&cbs_pos.getObject(), domAggr, log_size);
-      if (log_size != 0) {
-        activeProps[p.propagator().id()] = log_size;
+      unsigned int domAggr, domAggrB;
+      p.propagator().slndistsize(&cbs_pos.getObject(), domAggr, domAggrB);
+      if (domAggrB != 0) {
+        activeProps[p.propagator().id()] = {domAggr, domAggrB};
       }
     }
 
@@ -745,22 +751,13 @@ public:
         logProp.erase(prop_id);
     }
 
-//    assert(logDensity.size() == logProp.size());
-//    double __n_prop_in_log = logDensity.size();
-//    double __C=0, __R=0, __K=0;
-
     // We specify the log that will be modified when the propagators use the
     // CBS::set()
     heur.set_log_prop(&logProp);
     for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
-      unsigned int totDomSize, domSizeBrancherVar;
-      p.propagator().slndistsize(&cbs_pos.getObject(),
-                                 totDomSize, domSizeBrancherVar);
-
-      if (domSizeBrancherVar == 0) continue;
-
       auto prop_id = p.propagator().id();
-      auto prop_size = activeProps[prop_id];
+      if (activeProps.find(prop_id) == activeProps.end()) continue;
+      auto aProp = &activeProps[prop_id];
 
       // Propagator already in the log?
       bool in_log = logProp.find(prop_id) != logProp.end();
@@ -768,58 +765,24 @@ public:
 
       if (in_log) {
         auto prop = &logProp[prop_id];
-        changed = prop->getNbRecords()*recomputation_ratio > prop_size;
+        changed = prop->getDomAggr()*recomputation_ratio > aProp->domAggr;
         if (changed)
-          prop->reuse_space(prop_size);
+          prop->reuse_space(aProp->domAggrB);
       } else {
         // We create a new propagator
-        logProp[prop_id] = PropInfo(home, prop_size);
+        logProp[prop_id] = PropInfo(home, aProp->domAggr, aProp->domAggrB);
       }
-
-//      if (!in_log)
-//        __C++;
-//      else {
-//        if (!changed)
-//          __K++;
-//        else
-//          __R++;
-//      }
 
       if (!in_log || changed) {
         p.propagator().slndist(home,&heur);
       }
     }
 
-//    assert(__R+__K==__n_prop_in_log);
-//    std::cout << __n_prop_in_log << " " << __K/__n_prop_in_log << std::endl;
-
-//    #ifdef SQL
-//    // TODO: Mettre un flag qui fait ça ou non ici...
-//    for (auto prop : logDensity) {
-//      unsigned int prop_id = prop.first;
-//      double slnCnt = logProp[prop_id].second;
-//      size_t nb_records = prop.second.first;
-//      Record *records = prop.second.second;
-//      for (unsigned int i=0; i<nb_records; ++i) {
-//        Record *r = &records[i];
-//        CBSDB::insert_varval_density(prop_id, r->var_id, r->val, r->density);
-//      }
-//    }
-//    #endif
-
     // We find the choice.
     Candidate c = heur.getChoice(home);
-    static int count=0;
     assert(!x[c.idx].assigned());
     assert(x[c.idx].in(c.val));
 
-//    for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
-//      if (!p.propagator().slndist(home, NULL)) continue;
-//      unsigned int prop_id = p.propagator().id();
-//      assert(logProp[prop_id].first > logDensity[prop_id].first);
-//    }
-
-//    std::cout << c.idx << " " << c.val << std::endl;
     return new PosValChoice<int>(*this,2,c.idx,c.val);
   }
   virtual const Choice* choice(const Space&, Archive& e) {
