@@ -60,7 +60,7 @@ namespace {
  *
  */
 
-//#define SPECS
+#define SPECS
 
 class MagicSquare : public Script {
 private:
@@ -135,9 +135,11 @@ public:
     // All fields must be distinct
     distinct(*this, x, opt.ipl());
 
+  #ifndef SPECS
     // Break some (few) symmetries
     rel(*this, m(0,0), IRT_GR, m(0,n-1));
     rel(*this, m(0,0), IRT_GR, m(n-1,0));
+  #endif
 
     switch (opt.branching()) {
     case BRANCH_SIZE:
