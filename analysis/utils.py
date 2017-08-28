@@ -135,10 +135,11 @@ def solved_graph(df, xcol, xlabel="", heur_to_plot=[]):
     if heur_to_plot == []:
         heur_to_plot = df.reset_index()['heur'].unique()
     for heur in heur_to_plot:
-        x = df.loc[heur].dropna().sort_values(by=xcol)[xcol].values
-        y = [i/len(x)*100 for i,_ in enumerate(x)]
-
-
+        _len = len(df.loc[heur])
+        x = list(df.loc[heur].dropna().sort_values(by=xcol)[xcol].values)
+        y = [(i+1)/_len*100 for i,_ in enumerate(x)]
+        x = [0] + x
+        y = [0] + y
         plt.plot(x,y, label=heur, linewidth=3)
         plt.xscale('log')
 

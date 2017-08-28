@@ -58,6 +58,8 @@ public:
         best_candidate = Best{x[i].id(),x[i].med(),dens_moy};
     }
 
+    static unsigned int _count = 0;
+    std::cout << _count++ << std::endl;
     return Candidate{xD.positions[best_candidate.var_id],best_candidate.val};
   }
 };
@@ -136,8 +138,8 @@ public:
     n_holes = IntVar(*this, 0, num_edges);
     rel(*this, n_holes == sum(node_holes));
 
-    cbsbranch_md(*this, edge_col);
-//    cbsbranch(*this, edge_col, CBSBranchingHeuristic::MAX_SD);
+//    cbsbranch_md(*this, edge_col);
+    cbsbranch(*this, edge_col, CBSBranchingHeuristic::MAX_SD);
 //    branch(*this, edge_col, CBSBranchingHeuristic::MAX_SD);
     branch(*this, edge_col, INT_VAR_SIZE_MIN(), INT_VAL_MIN());
 //    branch(*this, edge_col, INT_VAR, INT_VAL_MIN());
