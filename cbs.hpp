@@ -83,6 +83,7 @@ public:
 
   size_t getDomAggr() const { return domAggr; }
   size_t getDomAggrB() const { return records.size; }
+  unsigned int getPosRec() const { return records.pos; }
 
   SlnCnt getSlnCnt() const { return slnCount; }
   void setSlnCnt(SlnCnt cnt) {
@@ -164,8 +165,8 @@ struct VADesc {
     for (unsigned int i=0; i<x.size(); i++)
       positions[x[i].id()] = i;
 
-    minVal = INT_MAX;
-    int maxVal = INT_MIN;
+    minVal = std::numeric_limits<int>::max();
+    int maxVal = std::numeric_limits<int>::min();
     for (unsigned int i=0; i<x.size(); i++) {
       if (x[i].min() < minVal) minVal = x[i].min();
       if (x[i].max() > maxVal) maxVal = x[i].max();
@@ -253,6 +254,7 @@ public:
 protected:
   // Array of variables we are using for branching
   ViewArray<View> x;
+  unsigned int minDomSize;
   VADesc xD;
   // The log in which the set method is currently inserting
   LogProp *logProp;
@@ -267,7 +269,7 @@ public:
    * @param x0 Variables concerning the branching heuristic
    */
   BranchingHeuristic(Space& home, const ViewArray<View>& x0)
-    : x(x0), xD(x0) {}
+    : x(x0), minDomSize(0), xD(x0) {}
   /**
    * Constructor for cloning spaces
    *
@@ -283,6 +285,15 @@ public:
   void set_log_prop(LogProp *logProp0) {
     assert(logProp0 != nullptr);
     logProp = logProp0;
+  }
+  //TODO: Comment
+  void set_min_dom_size(unsigned int minDomSize0) {
+    minDomSize = minDomSize0;
+  }
+  // TODO: Comment
+  virtual bool compute(VarId var_id) const {
+//    return true;
+    return x[varpos(xD,var_id)].size() - 1 <= minDomSize;
   }
   // Method used by all propagators for communicating calculated densities for
   // each of its (variable,value) pair.
@@ -305,7 +316,7 @@ public:
     for (const auto& elem : *logProp) {
       auto prop_id = elem.first;
       auto prop = &elem.second;
-      for (int i=0; i<prop->getDomAggrB(); i++) {
+      for (int i=0; i<prop->getPosRec(); i++) {
         auto r = (*prop)[i];
         f(prop_id, prop->getSlnCnt(), r.var_id, r.val, r.dens);
       }
@@ -346,6 +357,26 @@ public:
       if (!x[pos].assigned() && x[pos].in(val))
         if (dens > best.dens || (dens == best.dens && var_id < best.var_id))
           best = {var_id, val, dens};
+    });
+    assert(best.var_id != 0);
+    return {xD.positions[best.var_id],best.val};
+  }
+};
+
+template<class View>
+class maxRelSD : public BranchingHeuristic<View> {
+  USING_BH
+public:
+  virtual Candidate getChoice(Space& home) {
+    PropInfo::Record best{0,0,0};
+    for_every_log_entry([&](PropId prop_id, SlnCnt slnCnt,
+                            VarId var_id, Val val, SlnCnt dens) {
+      unsigned int pos = varpos(xD, var_id);
+      if (!x[pos].assigned() && x[pos].in(val)) {
+        double score = dens - 1.0/(double)x[pos].size();
+        if (score > best.dens || (score == best.dens && var_id < best.var_id))
+          best = {var_id, val, score};
+      }
     });
     assert(best.var_id != 0);
     return {xD.positions[best.var_id],best.val};
@@ -609,6 +640,9 @@ protected:
     private:
       int size() const { return max_id - min_id + 1; }
       bool& get(VarId var_id) { return inBrancher[var_id - min_id]; }
+      bool get(VarId var_id) const {
+        return const_cast<BoolArray*>(this)->get(var_id);
+      }
     public:
 //      BoolArray() = default;
       template<class View>
@@ -636,7 +670,7 @@ protected:
         std::cout << "CECI DOIT APPARAITRE" << std::endl;
         heap.free(inBrancher, size());
       }
-      virtual bool varInBrancher(VarId var_id) {
+      virtual bool varInBrancher(VarId var_id) const {
         if (var_id-min_id < 0) return false;
         if (var_id-min_id >= size()) return false;
         return get(var_id);
@@ -754,6 +788,15 @@ public:
     // We specify the log that will be modified when the propagators use the
     // CBS::set()
     heur.set_log_prop(&logProp);
+    {
+      unsigned int minDomSize = std::numeric_limits<unsigned int>::max();
+      for (int i = 0; i < x.size(); i++) {
+        if (!x[i].assigned())
+          minDomSize = std::min(x[i].size(), minDomSize);
+      }
+      heur.set_min_dom_size(minDomSize);
+    }
+
     for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
       auto prop_id = p.propagator().id();
       if (activeProps.find(prop_id) == activeProps.end()) continue;
@@ -777,6 +820,7 @@ public:
         p.propagator().slndist(home,&heur);
       }
     }
+
 
     // We find the choice.
     Candidate c = heur.getChoice(home);
@@ -832,7 +876,7 @@ void _cbsbranch(Home home, const T& x, CBSBranchingHeuristic s) {
       break;
     case MAX_REL_SD:
       GECODE_NEVER;
-//      CBSBrancher<View,maxRelSD>::post(home,y);
+      CBSBrancher<View,maxRelSD>::post(home,y,1);
       break;
     case MAX_REL_RATIO:
       GECODE_NEVER;
