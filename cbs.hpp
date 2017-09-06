@@ -68,7 +68,7 @@ public:
   PropInfo(Space& home, const PropInfo& o)
     : domAggr(o.domAggr), records(o.records), slnCount(o.slnCount) {
     records.x = home.alloc<Record>(records.size);
-    memcpy(records.x, o.records.x, records.size * sizeof(Record));
+    memcpy(records.x, o.records.x, records.pos * sizeof(Record));
   }
 
   Record& operator[](unsigned int i) {
@@ -292,8 +292,8 @@ public:
   }
   // TODO: Comment
   virtual bool compute(VarId var_id) const {
-//    return true;
-    return x[varpos(xD,var_id)].size() - 1 <= minDomSize;
+    return true;
+//    return x[varpos(xD,var_id)].size() - 1 <= minDomSize;
   }
   // Method used by all propagators for communicating calculated densities for
   // each of its (variable,value) pair.
@@ -817,6 +817,7 @@ public:
       }
 
       if (!in_log || changed) {
+//        p.propagator().slndist(home,&heur,SolnDistribution::MAX_PER_PROP);
         p.propagator().slndist(home,&heur);
       }
     }
