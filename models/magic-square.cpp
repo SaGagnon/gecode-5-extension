@@ -60,7 +60,7 @@ namespace {
  *
  */
 
-#define SPECS
+//#define SPECS
 
 class MagicSquare : public Script {
 private:

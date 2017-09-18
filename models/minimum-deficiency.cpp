@@ -11,56 +11,20 @@
 using namespace Gecode;
 
 template<class View>
-class aAvgSD_md : public BranchingHeuristic<View> {
+class maxSD_md : public BranchingHeuristic<View> {
   USING_BH
-protected:
-  SharedArray<double> tot_dens;
-  SharedArray<int> prop_count;
 public:
-  aAvgSD_md(Space& home, const ViewArray<View>& x)
-    : BranchingHeuristic<View>(home,x) {
-    int size = xD.size * xD.width;
-    tot_dens.init(size);
-    prop_count.init(size);
-    for (int i=0; i<size; i++) {
-      tot_dens[i] = 0;
-      prop_count[i] = 0;
-    }
-  }
-  aAvgSD_md(Space& home, bool share, aAvgSD_md& h)
-    : BranchingHeuristic<View>(home,share,h) {
-    tot_dens.update(home,share,h.tot_dens);
-    prop_count.update(home,share,h.prop_count);
-  }
-
   virtual Candidate getChoice(Space& home) {
-    for (int i=0; i<tot_dens.size(); i++) {
-      tot_dens[i] = 0;
-      prop_count[i] = 0;
-    }
-
-    for_every_log_entry([&](unsigned int prop_id, double slnCnt,
-                            unsigned int var_id, int val, double dens) {
-      unsigned int idx = varvalpos(xD,var_id,val);
-      tot_dens[idx] += dens;
-      prop_count[idx] += 1;
+    PropInfo::Record best{0,0,0};
+    for_every_log_entry([&](PropId prop_id, SlnCnt slnCnt,
+                            VarId var_id, Val val, SlnCnt dens) {
+      unsigned int pos = varpos(xD, var_id);
+      if (!x[pos].assigned() && x[pos].in(val))
+        if (dens/val > best.dens)
+          best = {var_id, val, dens/val};
     });
-
-    struct Best { unsigned int var_id; int val; double dens_moy;
-    } best_candidate{0,0,0};
-
-    for (unsigned int i=0; i<x.size(); i++) {
-      if (x[i].assigned()) continue;
-      if (!xD.positions.isIn(x[i].id())) continue;
-      unsigned int idx = varvalpos(xD,x[i].id(),x[i].med());
-      double dens_moy = tot_dens[idx] / (double)prop_count[idx];
-      if (dens_moy > best_candidate.dens_moy)
-        best_candidate = Best{x[i].id(),x[i].med(),dens_moy};
-    }
-
-    static unsigned int _count = 0;
-    std::cout << _count++ << std::endl;
-    return Candidate{xD.positions[best_candidate.var_id],best_candidate.val};
+    assert(best.var_id != 0);
+    return {xD.positions[best.var_id],best.val};
   }
 };
 
@@ -68,7 +32,7 @@ public:
 void cbsbranch_md(Home home, const IntVarArgs& x) {
   if (home.failed()) return;
   ViewArray<Int::IntView> y(home,x);
-  CBSBrancher<Int::IntView,aAvgSD_md>::post(home,y);
+  CBSBrancher<Int::IntView,maxSD_md>::post(home,y);
 }
 
 class MinDef : public IntMinimizeScript {
@@ -132,14 +96,15 @@ public:
         v_edges[j] = edge_col[_node_edges[i][j]-1];
       distinct(*this, v_edges, opt.ipl());
       rel(*this, node_holes[i] == max(v_edges) - min(v_edges) + 1 - card);
-      rel(*this, node_holes[i] < 7); // best = card/4
+      rel(*this, node_holes[i] < 8); // best = card/4
     }
 
     n_holes = IntVar(*this, 0, num_edges);
     rel(*this, n_holes == sum(node_holes));
+//    rel(*this, n_holes < 600);
 
-//    cbsbranch_md(*this, edge_col);
-    cbsbranch(*this, edge_col, CBSBranchingHeuristic::MAX_SD);
+    cbsbranch_md(*this, edge_col);
+//    cbsbranch(*this, edge_col, CBSBranchingHeuristic::MAX_SD);
 //    branch(*this, edge_col, CBSBranchingHeuristic::MAX_SD);
     branch(*this, edge_col, INT_VAR_SIZE_MIN(), INT_VAL_MIN());
 //    branch(*this, edge_col, INT_VAR, INT_VAL_MIN());
