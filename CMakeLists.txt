@@ -43,12 +43,31 @@ endif()
 
 include_directories(./)
 
+#include(ExternalProject)
+#ExternalProject_Add(functional_plus
+#        GIT_REPOSITORY https://github.com/Dobiasd/FunctionalPlus.git
+#        GIT_TAG master
+#
+#        SOURCE_DIR "${CMAKE_BINARY_DIR}/thirdparty/fplus"
+#
+#        CONFIGURE_COMMAND ""
+#        BUILD_COMMAND ""
+#        INSTALL_COMMAND ""
+#
+#        LOG_DOWNLOAD ON
+#        LOG_BUILD ON
+#        )
+#set(FPLUS_INCLUDE_DIR ${CMAKE_BINARY_DIR}/thirdparty/fplus/include)
+#include_directories(${FPLUS_INCLUDE_DIR})
+#
+
 foreach(ex "latinsquare" "nonogram" "qcp" "magic-square" "minimum-deficiency"
-        "bin-packing" "crowded-chess")
+        "bin-packing" "crowded-chess" "spanning-tree")
     if(${ex} STREQUAL "bin-packing")
         find_package(Threads REQUIRED)
     endif()
     add_executable(${ex} models/${ex}.cpp ${SQL_SRC})
+#    add_dependencies(${ex} functional_plus)
     target_link_libraries(${ex} ${Gecode_LIBRARIES})
     if(${BUILD_SQL} OR ${ex} MATCHES "bin-packing")
         target_link_libraries(${ex} Threads::Threads ${CMAKE_DL_LIBS})
