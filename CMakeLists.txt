@@ -61,14 +61,21 @@ include_directories(./)
 #include_directories(${FPLUS_INCLUDE_DIR})
 #
 
+#find_package(PkgConfig)
+#pkg_search_module(Eigen3 REQUIRED eigen3)
+
+find_package (Eigen3 REQUIRED NO_MODULE)
+
 foreach(ex "latinsquare" "nonogram" "qcp" "magic-square" "minimum-deficiency"
         "bin-packing" "crowded-chess" "spanning-tree")
     if(${ex} STREQUAL "bin-packing")
         find_package(Threads REQUIRED)
     endif()
     add_executable(${ex} models/${ex}.cpp ${SQL_SRC})
-#    add_dependencies(${ex} functional_plus)
     target_link_libraries(${ex} ${Gecode_LIBRARIES})
+    if(${ex} STREQUAL "spanning-tree")
+        include_directories(${EIGEN3_INCLUDE_DIR})
+    endif()
     if(${BUILD_SQL} OR ${ex} MATCHES "bin-packing")
         target_link_libraries(${ex} Threads::Threads ${CMAKE_DL_LIBS})
     endif()

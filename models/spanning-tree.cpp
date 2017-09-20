@@ -1,9 +1,10 @@
 #include <set>
+#include <stack>
+#include <Eigen/Dense>
 
 #include <gecode/driver.hh>
-#include <stack>
 
-//#include "cbs.hpp"
+#include "cbs.hpp"
 
 using namespace Gecode;
 
@@ -12,6 +13,42 @@ using NaryProp = NaryPropagator<SetView, Set::PC_SET_CGLB>;
 
 class SpanningTreeCtr : public NaryProp {
   using NaryProp::x;
+public:
+  SpanningTreeCtr(const Home& home, ViewArray<Set::SetView>& x)
+    : NaryProp(home, x) {}
+
+  SpanningTreeCtr(Space& home, bool share, SpanningTreeCtr& p)
+    : NaryProp(home, share, p) {}
+
+  Actor* copy(Space& home, bool share) override {
+    return new (home) SpanningTreeCtr(home,share,*this);
+  }
+
+  ExecStatus propagate(Space& home, const ModEventDelta& med) override {
+    enforce_node_symmetry(home);
+
+    auto ccs = connected_components_no_cycle<SetVarGlbValues>();
+    if (ccs.empty())
+      return ES_FAILED;
+
+    prune_LUB_to_avoid_cycle(home, ccs);
+    return ES_FIX;
+  }
+
+  void slndist(Space& home, SolnDistribution *dist,
+               SolnDistribution::Type type) const override {
+    Propagator::slndist(home, dist, type);
+  }
+  void
+  slndistsize(SolnDistributionSize *s, unsigned int& domAggr,
+                   unsigned int& domAggrB) const override {
+    Propagator::slndistsize(s, domAggr, domAggrB);
+  }
+
+  static ExecStatus post(Home home, ViewArray<Set::SetView>& x) {
+    (void) new (home) SpanningTreeCtr(home, x);
+    return ES_OK;
+  }
 private:
   template<class SetVarValues>
   std::vector<std::set<int>>
@@ -50,18 +87,6 @@ private:
     }
     return std::move(connected_components);
   }
-
-public:
-  SpanningTreeCtr(const Home& home, ViewArray<Set::SetView>& x)
-    : NaryProp(home, x) {}
-
-  SpanningTreeCtr(Space& home, bool share, SpanningTreeCtr& p)
-    : NaryProp(home, share, p) {}
-
-  Actor* copy(Space& home, bool share) override {
-    return new (home) SpanningTreeCtr(home,share,*this);
-  }
-
   void prune_LUB_to_avoid_cycle(Space& home, std::vector<std::set<int>> ccs) {
     for (auto cc : ccs)
       for (auto node : cc)
@@ -69,7 +94,6 @@ public:
           if (!x[node].contains(node_to_delete))
             x[node].exclude(home, node_to_delete);
   }
-
   void enforce_node_symmetry(Space& home) {
     for (int i=0; i<x.size(); i++) {
       for (SetVarGlbValues adj(x[i]); adj(); ++adj) {
@@ -77,39 +101,12 @@ public:
       }
     }
   }
-
-  ExecStatus propagate(Space& home, const ModEventDelta& med) override {
-    enforce_node_symmetry(home);
-
-    auto ccs = connected_components_no_cycle<SetVarGlbValues>();
-    if (ccs.empty())
-      return ES_FAILED;
-
-    prune_LUB_to_avoid_cycle(home, ccs);
-    return ES_FIX;
-  }
-
   std::set<int>
   set_of_all_nodes(int n) const {
     std::set<int> not_visited;
     for (int i = 0; i < n; i++)
       not_visited.insert(not_visited.end(), i);
     return std::move(not_visited);
-  }
-
-  void slndist(Space& home, SolnDistribution *dist,
-               SolnDistribution::Type type) const override {
-    Propagator::slndist(home, dist, type);
-  }
-  void
-  slndistsize(SolnDistributionSize *s, unsigned int& domAggr,
-                   unsigned int& domAggrB) const override {
-    Propagator::slndistsize(s, domAggr, domAggrB);
-  }
-
-  static ExecStatus post(Home home, ViewArray<Set::SetView>& x) {
-    (void) new (home) SpanningTreeCtr(home, x);
-    return ES_OK;
   }
 };
 
