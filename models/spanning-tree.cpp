@@ -1,6 +1,7 @@
 #include <set>
 #include <stack>
-#include <Eigen/Dense>
+//#include <Eigen/Dense>
+#include <armadillo>
 
 #include <gecode/driver.hh>
 
@@ -35,14 +36,79 @@ public:
     return ES_FIX;
   }
 
+  arma::mat construct_Laplacian_matrix(int size) const {
+    int n = x.size();
+    arma::mat m(n,n, arma::fill::zeros);
+    auto ccs = connected_components_no_cycle<SetVarGlbValues>();
+
+    for (const auto& cc : ccs) {
+      auto outDegrees = connected_components_out_degrees(cc);
+      int master_node = *cc.begin();
+      int master_node_degree = std::accumulate(outDegrees.begin(),
+                                               outDegrees.end(), 0);
+
+      for (int i=0; i<n; i++) {
+        m(i, master_node) = -outDegrees[i];
+        m(master_node, i) = -outDegrees[i];
+      }
+
+      m(master_node, master_node) = master_node_degree;
+
+      for (auto node_cc = ++cc.begin(); node_cc != cc.end(); ++node_cc) {
+        m(*node_cc, *node_cc) = 1;
+      }
+    }
+    return std::move(m);
+  }
+
+  std::vector<int> connected_components_out_degrees(const std::set<int>& cc) const {
+    std::vector<int> outDegree;
+    outDegree.resize((size_t) x.size());
+    std::vector<int> degreeCount_Glb((size_t) x.size(), 0);
+    std::vector<int> degreeCount_Lub((size_t) x.size(), 0);
+    for (auto node : cc) {
+        for (SetVarGlbValues adj(x[node]); adj(); ++adj)
+          degreeCount_Glb[adj.val()] += 1;
+        for (SetVarLubValues adj(x[node]); adj(); ++adj)
+          degreeCount_Lub[adj.val()] += 1;
+      }
+    for (auto i = 0; i < x.size(); i++)
+        outDegree[i] = degreeCount_Lub[i] - degreeCount_Glb[i];
+    return std::move(outDegree);
+  }
+
   void slndist(Space& home, SolnDistribution *dist,
                SolnDistribution::Type type) const override {
-    Propagator::slndist(home, dist, type);
+    int n = x.size();
+    arma::mat laplacian = construct_Laplacian_matrix(n);
+
+    arma::uvec idx_sm(n-1);
+    int j = 1;
+    int num = 0;
+    int idx = 0;
+    while (num < n) {
+      if (num==j) num++;
+      idx_sm[idx++] = num++;
+    }
+
+
+    std::cout << arma::inv(laplacian.submat(idx_sm, idx_sm)) << std::endl;
+
+
+    exit(-1);
   }
   void
   slndistsize(SolnDistributionSize *s, unsigned int& domAggr,
                    unsigned int& domAggrB) const override {
-    Propagator::slndistsize(s, domAggr, domAggrB);
+    domAggr = 0;
+    domAggrB = 0;
+    for (int i=0; i<x.size(); i++) {
+      if (!x[i].assigned()) {
+        domAggr += x[i].lubSize();
+        if (s->varInBrancher(x[i].id()))
+          domAggrB += x[i].lubSize();
+      }
+    }
   }
 
   static ExecStatus post(Home home, ViewArray<Set::SetView>& x) {
@@ -52,7 +118,7 @@ public:
 private:
   template<class SetVarValues>
   std::vector<std::set<int>>
-  connected_components_no_cycle() {
+  connected_components_no_cycle() const {
     using CC = std::vector<std::set<int>>;
     using Node = int;
     using SetNode = std::set<int>;
@@ -175,7 +241,8 @@ public:
 
     spanningTreeCtr(*this, nodes);
 
-    branch(*this, nodes, SET_VAR_SIZE_MIN(), SET_VAL_MIN_INC());
+//    branch(*this, nodes, SET_VAR_SIZE_MIN(), SET_VAL_MIN_INC());
+    cbsbranch(*this, nodes,  CBSBranchingHeuristic::MAX_SD);
   }
 
   SpanningTree(bool share, SpanningTree& s)

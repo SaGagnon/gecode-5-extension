@@ -64,7 +64,7 @@ include_directories(./)
 #find_package(PkgConfig)
 #pkg_search_module(Eigen3 REQUIRED eigen3)
 
-find_package (Eigen3 REQUIRED NO_MODULE)
+find_package(Armadillo REQUIRED)
 
 foreach(ex "latinsquare" "nonogram" "qcp" "magic-square" "minimum-deficiency"
         "bin-packing" "crowded-chess" "spanning-tree")
@@ -74,7 +74,9 @@ foreach(ex "latinsquare" "nonogram" "qcp" "magic-square" "minimum-deficiency"
     add_executable(${ex} models/${ex}.cpp ${SQL_SRC})
     target_link_libraries(${ex} ${Gecode_LIBRARIES})
     if(${ex} STREQUAL "spanning-tree")
-        include_directories(${EIGEN3_INCLUDE_DIR})
+        include_directories(${ARMADILLO_INCLUDE_DIRS})
+        target_link_libraries(${ex} ${ARMADILLO_LIBRARIES})
+#        include_directories(${EIGEN3_INCLUDE_DIR})
     endif()
     if(${BUILD_SQL} OR ${ex} MATCHES "bin-packing")
         target_link_libraries(${ex} Threads::Threads ${CMAKE_DL_LIBS})

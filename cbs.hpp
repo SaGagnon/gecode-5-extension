@@ -911,7 +911,7 @@ public:
 
   int min(void) const { return x.lubMin(); }
   int max(void) const { return x.lubMax(); }
-  unsigned int size(void) const { return x.lubSize(); }
+  unsigned int size(void) const { return x.lubSize() - x.glbSize(); }
 
   bool in(int n) const { return x.contains(n); }
 
