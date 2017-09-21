@@ -898,8 +898,87 @@ void _cbsbranch(Home home, const T& x, CBSBranchingHeuristic s) {
   }
 }
 
+
+class SetViewCBS : public DerivedView<Set::SetView> {
+protected:
+  using DerivedView<Set::SetView>::x;
+public:
+  SetViewCBS(void) {}
+  SetViewCBS(Set::SetView& y)
+    : DerivedView<Set::SetView>(y) {}
+  SetViewCBS(const SetVar& y)
+    : DerivedView<Set::SetView>(y) {}
+
+  int min(void) const { return x.lubMin(); }
+  int max(void) const { return x.lubMax(); }
+  unsigned int size(void) const { return x.lubSize(); }
+
+  bool in(int n) const { return x.contains(n); }
+
+  ModEvent eq(Space& home, int n) { return x.include(home, n); }
+  ModEvent nq(Space& home, int n) { return x.exclude(home, n); }
+
+  Set::SetView getSetView() const { return x; }
+};
+
+namespace Gecode { namespace Int {
+
+  template<>
+  class ViewRanges<SetViewCBS> : public Gecode::SetVarGlbRanges {
+  public:
+    ViewRanges(void) {}
+    ViewRanges(const SetViewCBS& x)
+      : Gecode::SetVarGlbRanges(x.getSetView()) {}
+//    void init(const SetViewCBS& x) {
+//      Gecode::SetVarGlbRanges::in
+  };
+
+}}
+
+
+void _cbsbranchSet(Home home, ViewArray<SetViewCBS>& y, CBSBranchingHeuristic s) {
+  using View = SetViewCBS;
+  if (home.failed()) return;
+
+  switch(s) {
+    case MAX_SD:
+      CBSBrancher<View,maxSD>::post(home,y,1);
+      break;
+    case MAX_REL_SD:
+      GECODE_NEVER;
+      CBSBrancher<View,maxRelSD>::post(home,y,1);
+      break;
+    case MAX_REL_RATIO:
+      GECODE_NEVER;
+//      CBSBrancher<View,maxRelRatio>::post(home,y);
+      break;
+    case A_AVG_SD:
+      CBSBrancher<View,aAvgSD>::post(home,y);
+      break;
+    case W_SC_AVG:
+      GECODE_NEVER;
+//      CBSBrancher<View,wcSCAvg>::post(home,y);
+      break;
+    case AI:
+      CBSBrancher<View,ai>::post(home,y);
+      break;
+    default:
+      GECODE_NEVER;
+  }
+}
+
+
+
 void cbsbranch(Home home, const IntVarArgs& x, CBSBranchingHeuristic s) {
   _cbsbranch<Int::IntView,IntVarArgs>(home,x,s);
+}
+
+void cbsbranch(Home home, const SetVarArgs& x, CBSBranchingHeuristic s) {
+  ViewArray<SetViewCBS> _x(home, x.size());
+  for (int i=0; i<x.size(); i++)
+    _x[i] = SetViewCBS(x[i]);
+
+  _cbsbranchSet(home,_x,s);
 }
 
 void cbsbranch(Home home, const BoolVarArgs& x, CBSBranchingHeuristic s) {
