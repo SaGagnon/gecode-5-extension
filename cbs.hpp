@@ -148,100 +148,6 @@ public:
   }
 };
 
-// View array description
-struct VADesc {
-  template<class View>
-  VADesc(const ViewArray<View> x) {
-    // The VarIdToPos object is first implicitly constructed with the default
-    // constructor and its shared hashmap is not yet allocated. init() thus
-    // allocate memory for the hashmap
-    positions.init();
-
-    size = x.size();
-
-    // We can assign an index for each variable id
-    for (unsigned int i=0; i<x.size(); i++)
-      positions[x[i].id()] = i;
-
-    minVal = std::numeric_limits<int>::max();
-    int maxVal = std::numeric_limits<int>::min();
-    for (unsigned int i=0; i<x.size(); i++) {
-      if (x[i].min() < minVal) minVal = x[i].min();
-      if (x[i].max() > maxVal) maxVal = x[i].max();
-    }
-    assert(minVal != INT_MAX && maxVal != INT_MIN);
-
-    width = maxVal - minVal + 1;
-    assert(width > 1);
-  }
-  VADesc(Space& home, bool share, VADesc& xD)
-    : size(xD.size), minVal(xD.minVal), width(xD.width) {
-    // We tell that we have a subscription to x the new constructed space
-    // The hashmap of the VarIdPos object is shared between all spaces. We must
-    // tell here that we want to access the same memory that was allocated in
-    // the default constructor for the hashmap even if we change space. The
-    // only exception is when we use multithreading; the hash map will be copied
-    // and shared amongs the spaces in the new thread
-    positions.update(home,share,xD.positions);
-  }
-  // Hash map that assign an index for each variable in x given its id. It is
-  // useful if we want to store computations in a continuous memory space
-  VarIdToPos positions;
-  // Number of variables
-  int size;
-  // The minimum value in all the variable in x
-  int minVal;
-  // The width of the union of all variable domains in x
-  int width;
-};
-
-unsigned int varvalpos(const VADesc& xD, VarId var_id, Val val) {
-  return xD.positions[var_id] * xD.width + val - xD.minVal;
-}
-//
-unsigned int varpos(const VADesc& xD, VarId var_id) {
-  return xD.positions[var_id];
-}
-
-/**
- * \brief Base class for collecting densities from propagators
- *
- * Before beginning to explain what this class does, we must talk about the
- * slndist() method in Gecode::Propagator and the CBS class from which we inherit.
- *
- * Gecode::Propagator is the base class for every constraint in Gecode.
- * The algorithm to compute solution densities for a given (variable,value) pair
- * depends on the constraints in which the variable is involved (its
- * propagators). For this reason, there's a virtual method in Gecode::Propagator
- * that any given concrete propagator can overload to tell how it compute
- * densities for its variables. Here is the signature of the method:
- *
- *   Gecode::Propagator::slndist(Space& home, CBS* densities) const;
- *
- * As the time of writting this comment, the distinct propagator (see
- * gecode/int/distinct.hh) and regular propagator (see
- * gecode/int/extensional.hh) specialise the slndist method to specify its
- * algorithm to compute solutions densities.
- *
- * Of interest to us is the second argument of this method: CBS* densities.
- * The class CBS is an interface (virtual pure class) that contains only one
- * method:
- *
- * virtual void Gecode::CBS::set(unsigned int var_id, int val, double density) = 0;
- *
- * When a propagator overloads its slndist() method, all it knows is he has access
- * to a object CBS with a set() method that enables him to communicate the
- * results of its computation (i.e. densities for each of its
- * (variable,value) pair).
- *
- * When braching, CBSBrancher must call the slndist() method on each active
- * propagator that overloads the method and pass an object that inherits the
- * class CBS to store densities and compute a choice for branching.
- *
- * This class is a specialisation of CBS that we use for caching densities
- * between computation in a Log and reuse them if possible.
- */
-
 class CBSPos : public SharedHandle {
 protected:
   class CBSPosO : public SharedHandle::Object {
@@ -258,7 +164,6 @@ protected:
         return const_cast<BoolArray*>(this)->get(var_id);
       }
     public:
-//      BoolArray() = default;
       template<class View>
       explicit BoolArray(const ViewArray<View>& x) {
         auto minmax = std::minmax_element(x.begin(), x.end(), [](View a, View b) {
@@ -310,9 +215,6 @@ public:
   }
 };
 
-
-
-
 template<class View, typename Derived>
 class CBSBrancher : public Brancher, public SolnDistribution {
 public:
@@ -324,18 +226,26 @@ public:
 protected:
   const double recomputation_ratio;
   ViewArray<View> x;
-  VADesc xD;
+  VarIdToPos varpos;
   CBSPos cbs_pos;
 //  BranchingHeur<View> heur;
   LogProp logProp;
 public:
   CBSBrancher(Home home, ViewArray<View>& x0, double recomputation_ratio0)
     : Brancher(home), recomputation_ratio(recomputation_ratio0),
-      x(x0), xD(x), cbs_pos(x0),
+      x(x0), cbs_pos(x0),
       logProp(LogProp::size_type(), LogProp::hasher(),
                 LogProp::key_equal(), LogProp::allocator_type(home)) {
     // Because we must call the destructor of aAvgSD
     home.notice(*this,AP_DISPOSE);
+    // The VarIdToPos object is first implicitly constructed with the default
+    // constructor and its shared hashmap is not yet allocated. init() thus
+    // allocate memory for the hashmap
+    varpos.init();
+
+    // We assign an index for each variable id
+    for (unsigned int i=0; i<x.size(); i++)
+      varpos[x[i].id()] = i;
   }
   static void post(Home home, ViewArray<View>& x,
                    double recomputation_ratio=1) {
@@ -353,10 +263,18 @@ public:
   }
   CBSBrancher(Space& home, bool share, CBSBrancher& b)
     : Brancher(home,share,b), recomputation_ratio(b.recomputation_ratio),
-      xD(home,share,b.xD), cbs_pos(b.cbs_pos),
+      cbs_pos(b.cbs_pos),
       logProp(b.logProp.begin(), b.logProp.end(),
                  LogProp::size_type(), LogProp::hasher(),
                  LogProp::key_equal(), LogProp::allocator_type(home)) {
+    // We tell that we have a subscription to x the new constructed space
+    // The hashmap of the VarIdPos object is shared between all spaces. We must
+    // tell here that we want to access the same memory that was allocated in
+    // the default constructor for the hashmap even if we change space. The
+    // only exception is when we use multithreading; the hash map will be copied
+    // and shared amongs the spaces in the new thread
+    varpos.update(home,share,b.varpos);
+
     x.update(home,share,b.x);
     for (auto& elem : logProp)
       elem.second = PropInfo(home, b.logProp[elem.first]);
@@ -391,9 +309,9 @@ public:
   virtual void setMarginalDistribution(PropId prop_id, VarId var_id, Val val,
                                        Dens density) {
     assert(var_id != 0);
-    if (!xD.positions.isIn(var_id)) return;
-    assert(!x[xD.positions[var_id]].assigned());
-    assert(x[xD.positions[var_id]].in(val));
+    if (!varpos.isIn(var_id)) return;
+    assert(!x[varpos[var_id]].assigned());
+    assert(x[varpos[var_id]].in(val));
     assert(logProp.find(prop_id) != logProp.end());
 
     logProp[prop_id].insert_record(PropInfo::Record{var_id, val, density});
@@ -503,7 +421,7 @@ public:
 template<class View>
 class MAXSD : public CBSBrancher<View,MAXSD<View>> {
   using CBSBrancher<View,MAXSD<View>>::x;
-  using CBSBrancher<View,MAXSD<View>>::xD;
+  using CBSBrancher<View,MAXSD<View>>::varpos;
   using CBSBrancher<View,MAXSD<View>>::for_every_log_entry;
   typedef typename CBSBrancher<View,MAXSD<View>>::Candidate Candidate;
 public:
@@ -517,13 +435,13 @@ public:
     PropInfo::Record best{0,0,0};
     for_every_log_entry([&](PropId prop_id, SlnCnt slnCnt,
                             VarId var_id, Val val, SlnCnt dens) {
-      unsigned int pos = varpos(xD, var_id);
+      unsigned int pos = varpos[var_id];
       if (!x[pos].assigned() && x[pos].in(val))
         if (dens > best.dens || (dens == best.dens && var_id < best.var_id))
           best = {var_id, val, dens};
     });
     assert(best.var_id != 0);
-    return {xD.positions[best.var_id],best.val};
+    return {varpos[best.var_id],best.val};
   }
 };
 
