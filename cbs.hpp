@@ -911,9 +911,10 @@ public:
 
   int min(void) const { return x.lubMin(); }
   int max(void) const { return x.lubMax(); }
-  unsigned int size(void) const { return x.lubSize() - x.glbSize(); }
+  unsigned int size(void) const { return x.unknownSize(); }
 
-  bool in(int n) const { return x.contains(n); }
+  // TODO: Pas sur ici...
+  bool in(int n) const { return !x.notContains(n); }
 
   ModEvent eq(Space& home, int n) { return x.include(home, n); }
   ModEvent nq(Space& home, int n) { return x.exclude(home, n); }
