@@ -254,7 +254,6 @@ public:
 protected:
   // Array of variables we are using for branching
   ViewArray<View> x;
-  unsigned int minDomSize;
   VADesc xD;
   // The log in which the set method is currently inserting
   LogProp *logProp;
@@ -269,7 +268,7 @@ public:
    * @param x0 Variables concerning the branching heuristic
    */
   BranchingHeuristic(Space& home, const ViewArray<View>& x0)
-    : x(x0), minDomSize(0), xD(x0) {}
+    : x(x0), xD(x0) {}
   /**
    * Constructor for cloning spaces
    *
@@ -286,14 +285,9 @@ public:
     assert(logProp0 != nullptr);
     logProp = logProp0;
   }
-  //TODO: Comment
-  void set_min_dom_size(unsigned int minDomSize0) {
-    minDomSize = minDomSize0;
-  }
   // TODO: Comment
   virtual bool compute(VarId var_id) const {
     return true;
-//    return x[varpos(xD,var_id)].size() - 1 <= minDomSize;
   }
   // Method used by all propagators for communicating calculated densities for
   // each of its (variable,value) pair.
@@ -788,14 +782,6 @@ public:
     // We specify the log that will be modified when the propagators use the
     // CBS::set()
     heur.set_log_prop(&logProp);
-    {
-      unsigned int minDomSize = std::numeric_limits<unsigned int>::max();
-      for (int i = 0; i < x.size(); i++) {
-        if (!x[i].assigned())
-          minDomSize = std::min(x[i].size(), minDomSize);
-      }
-      heur.set_min_dom_size(minDomSize);
-    }
 
     for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
       auto prop_id = p.propagator().id();
