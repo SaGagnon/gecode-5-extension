@@ -693,19 +693,25 @@ public:
 
 
 
-template<class View, template<class> class BranchingHeur>
-class CBSBrancher : public Brancher {
-  typedef typename BranchingHeuristic<View>::Candidate Candidate;
+template<class View, typename Derived>
+class CBSBrancher : public Brancher, public SolnDistribution {
+public:
+  // A choice for branching
+  struct Candidate {
+    unsigned int idx; // Index of the variable in x
+    Val val; // Value in the domain of the variable
+  };
 protected:
   const double recomputation_ratio;
   ViewArray<View> x;
+  VADesc xD;
   CBSPos cbs_pos;
-  BranchingHeur<View> heur;
+//  BranchingHeur<View> heur;
   LogProp logProp;
 public:
   CBSBrancher(Home home, ViewArray<View>& x0, double recomputation_ratio0)
     : Brancher(home), recomputation_ratio(recomputation_ratio0),
-      x(x0), cbs_pos(x0), heur(home,x0),
+      x(x0), xD(x), cbs_pos(x0),
       logProp(LogProp::size_type(), LogProp::hasher(),
                 LogProp::key_equal(), LogProp::allocator_type(home)) {
     // Because we must call the destructor of aAvgSD
@@ -714,19 +720,20 @@ public:
   static void post(Home home, ViewArray<View>& x,
                    double recomputation_ratio=1) {
     assert(recomputation_ratio > 0 && recomputation_ratio <= 1);
-    (void) new (home) CBSBrancher(home,x,recomputation_ratio);
+    (void) new (home) Derived(home,x,recomputation_ratio);
   }
   virtual size_t dispose(Space& home) {
     home.ignore(*this, AP_DISPOSE);
     // ~aAvgSD() calls ~SharedHashMap() which calls ~SharedHashMapObject() to
     // deallocate the hash map when the refcount of SharedHashMapObject is 0
-    heur.~BranchingHeur<View>();
+    // TODO: Est-ce que la déallocation fonctionne encore ????
+//    heur.~BranchingHeur<View>();
     (void) Brancher::dispose(home);
     return sizeof(*this);
   }
   CBSBrancher(Space& home, bool share, CBSBrancher& b)
     : Brancher(home,share,b), recomputation_ratio(b.recomputation_ratio),
-      cbs_pos(b.cbs_pos), heur(home,share,b.heur),
+      xD(home,share,b.xD), cbs_pos(b.cbs_pos),
       logProp(b.logProp.begin(), b.logProp.end(),
                  LogProp::size_type(), LogProp::hasher(),
                  LogProp::key_equal(), LogProp::allocator_type(home)) {
@@ -736,7 +743,7 @@ public:
   }
   virtual Brancher* copy(Space& home, bool share) {
 //    CBSBrancher *ret = home.alloc<CBSBrancher>(1);
-    return new (home) CBSBrancher(home,share,*this);
+    return new (home) Derived(home,share,*this);
   }
   virtual bool status(const Space& home) const {
     Space& h = const_cast<Space&>(home);
@@ -753,6 +760,30 @@ public:
     }
     return false;
   }
+
+  virtual Candidate getChoice(Space& home) = 0;
+
+  virtual bool compute(VarId var_id) const {
+    return true;
+  }
+  // Method used by all propagators for communicating calculated densities for
+  // each of its (variable,value) pair.
+  virtual void setMarginalDistribution(PropId prop_id, VarId var_id, Val val,
+                                       Dens density) {
+    assert(var_id != 0);
+    if (!xD.positions.isIn(var_id)) return;
+    assert(!x[xD.positions[var_id]].assigned());
+    assert(x[xD.positions[var_id]].in(val));
+    assert(logProp.find(prop_id) != logProp.end());
+
+    logProp[prop_id].insert_record(PropInfo::Record{var_id, val, density});
+  }
+  virtual void setSupportSize(PropId prop_id, SlnCnt count) {
+    logProp[prop_id].setSlnCnt(count);
+  }
+
+
+
   virtual const Choice* choice(Space& home) {
     // Active propagators and the size we need for their log.
     // We considere a propagator as "active" only if
@@ -779,10 +810,6 @@ public:
         logProp.erase(prop_id);
     }
 
-    // We specify the log that will be modified when the propagators use the
-    // CBS::set()
-    heur.set_log_prop(&logProp);
-
     for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
       auto prop_id = p.propagator().id();
       if (activeProps.find(prop_id) == activeProps.end()) continue;
@@ -804,13 +831,13 @@ public:
 
       if (!in_log || changed) {
 //        p.propagator().slndist(home,&heur,SolnDistribution::MAX_PER_PROP);
-        p.propagator().slndist(home,&heur);
+        p.propagator().slndist(home,&*this);
       }
     }
 
 
     // We find the choice.
-    Candidate c = heur.getChoice(home);
+    Candidate c = getChoice(home);
     assert(!x[c.idx].assigned());
     assert(x[c.idx].in(c.val));
 
@@ -840,6 +867,44 @@ public:
     else
       o << "x[" << pos << "] != " << val;
   }
+public:
+  void for_every_log_entry(const std::function<void(PropId,SlnCnt,VarId,Val,Dens)>& f) {
+    for (const auto& elem : logProp) {
+      auto prop_id = elem.first;
+      auto prop = &elem.second;
+      for (int i=0; i<prop->getPosRec(); i++) {
+        auto r = (*prop)[i];
+        f(prop_id, prop->getSlnCnt(), r.var_id, r.val, r.dens);
+      }
+    }
+  }
+};
+
+template<class View>
+class MAXSD : public CBSBrancher<View,MAXSD<View>> {
+  using CBSBrancher<View,MAXSD<View>>::x;
+  using CBSBrancher<View,MAXSD<View>>::xD;
+  using CBSBrancher<View,MAXSD<View>>::for_every_log_entry;
+  typedef typename CBSBrancher<View,MAXSD<View>>::Candidate Candidate;
+public:
+  MAXSD(const Home& home, ViewArray<View>& x0, double recomputation_ratio0)
+    : CBSBrancher<View,MAXSD<View>>(home, x0, recomputation_ratio0) {}
+
+  MAXSD(Space& home, bool share, CBSBrancher<View,MAXSD<View>>& b)
+    : CBSBrancher<View,MAXSD<View>>(home, share, b) {}
+
+  Candidate getChoice(Space& home) override {
+    PropInfo::Record best{0,0,0};
+    for_every_log_entry([&](PropId prop_id, SlnCnt slnCnt,
+                            VarId var_id, Val val, SlnCnt dens) {
+      unsigned int pos = varpos(xD, var_id);
+      if (!x[pos].assigned() && x[pos].in(val))
+        if (dens > best.dens || (dens == best.dens && var_id < best.var_id))
+          best = {var_id, val, dens};
+    });
+    assert(best.var_id != 0);
+    return {xD.positions[best.var_id],best.val};
+  }
 };
 
 enum CBSBranchingHeuristic {
@@ -859,100 +924,102 @@ void _cbsbranch(Home home, const T& x, CBSBranchingHeuristic s) {
 
   switch(s) {
     case MAX_SD:
-      CBSBrancher<View,maxSD>::post(home,y,1);
+      MAXSD<View>::post(home,y,1);
+
+//      CBSBrancher<View,maxSD>::post(home,y,1);
       break;
-    case MAX_REL_SD:
-      GECODE_NEVER;
-      CBSBrancher<View,maxRelSD>::post(home,y,1);
-      break;
-    case MAX_REL_RATIO:
-      GECODE_NEVER;
-//      CBSBrancher<View,maxRelRatio>::post(home,y);
-      break;
-    case A_AVG_SD:
-      CBSBrancher<View,aAvgSD>::post(home,y);
-      break;
-    case W_SC_AVG:
-      GECODE_NEVER;
-//      CBSBrancher<View,wcSCAvg>::post(home,y);
-      break;
-    case AI:
-      CBSBrancher<View,ai>::post(home,y);
-      break;
+//    case MAX_REL_SD:
+//      GECODE_NEVER;
+//      CBSBrancher<View,maxRelSD>::post(home,y,1);
+//      break;
+//    case MAX_REL_RATIO:
+//      GECODE_NEVER;
+////      CBSBrancher<View,maxRelRatio>::post(home,y);
+//      break;
+//    case A_AVG_SD:
+//      CBSBrancher<View,aAvgSD>::post(home,y);
+//      break;
+//    case W_SC_AVG:
+//      GECODE_NEVER;
+////      CBSBrancher<View,wcSCAvg>::post(home,y);
+//      break;
+//    case AI:
+//      CBSBrancher<View,ai>::post(home,y);
+//      break;
     default:
       GECODE_NEVER;
   }
 }
 
 
-class SetViewCBS : public DerivedView<Set::SetView> {
-protected:
-  using DerivedView<Set::SetView>::x;
-public:
-  SetViewCBS(void) {}
-  SetViewCBS(Set::SetView& y)
-    : DerivedView<Set::SetView>(y) {}
-  SetViewCBS(const SetVar& y)
-    : DerivedView<Set::SetView>(y) {}
+//class SetViewCBS : public DerivedView<Set::SetView> {
+//protected:
+//  using DerivedView<Set::SetView>::x;
+//public:
+//  SetViewCBS(void) {}
+//  SetViewCBS(Set::SetView& y)
+//    : DerivedView<Set::SetView>(y) {}
+//  SetViewCBS(const SetVar& y)
+//    : DerivedView<Set::SetView>(y) {}
+//
+//  int min(void) const { return x.lubMin(); }
+//  int max(void) const { return x.lubMax(); }
+//  unsigned int size(void) const { return x.unknownSize(); }
+//
+//  // TODO: Pas sur ici...
+//  bool in(int n) const { return !x.notContains(n); }
+//
+//  ModEvent eq(Space& home, int n) { return x.include(home, n); }
+//  ModEvent nq(Space& home, int n) { return x.exclude(home, n); }
+//
+//  Set::SetView getSetView() const { return x; }
+//};
 
-  int min(void) const { return x.lubMin(); }
-  int max(void) const { return x.lubMax(); }
-  unsigned int size(void) const { return x.unknownSize(); }
-
-  // TODO: Pas sur ici...
-  bool in(int n) const { return !x.notContains(n); }
-
-  ModEvent eq(Space& home, int n) { return x.include(home, n); }
-  ModEvent nq(Space& home, int n) { return x.exclude(home, n); }
-
-  Set::SetView getSetView() const { return x; }
-};
-
-namespace Gecode { namespace Int {
-
-  template<>
-  class ViewRanges<SetViewCBS> : public Gecode::SetVarGlbRanges {
-  public:
-    ViewRanges(void) {}
-    ViewRanges(const SetViewCBS& x)
-      : Gecode::SetVarGlbRanges(x.getSetView()) {}
-//    void init(const SetViewCBS& x) {
-//      Gecode::SetVarGlbRanges::in
-  };
-
-}}
+//namespace Gecode { namespace Int {
+//
+//  template<>
+//  class ViewRanges<SetViewCBS> : public Gecode::SetVarGlbRanges {
+//  public:
+//    ViewRanges(void) {}
+//    ViewRanges(const SetViewCBS& x)
+//      : Gecode::SetVarGlbRanges(x.getSetView()) {}
+////    void init(const SetViewCBS& x) {
+////      Gecode::SetVarGlbRanges::in
+//  };
+//
+//}}
 
 
-void _cbsbranchSet(Home home, ViewArray<SetViewCBS>& y, CBSBranchingHeuristic s) {
-  using View = SetViewCBS;
-  if (home.failed()) return;
-
-  switch(s) {
-    case MAX_SD:
-      CBSBrancher<View,maxSD>::post(home,y,1);
-      break;
-    case MAX_REL_SD:
-      GECODE_NEVER;
-      CBSBrancher<View,maxRelSD>::post(home,y,1);
-      break;
-    case MAX_REL_RATIO:
-      GECODE_NEVER;
-//      CBSBrancher<View,maxRelRatio>::post(home,y);
-      break;
-    case A_AVG_SD:
-      CBSBrancher<View,aAvgSD>::post(home,y);
-      break;
-    case W_SC_AVG:
-      GECODE_NEVER;
-//      CBSBrancher<View,wcSCAvg>::post(home,y);
-      break;
-    case AI:
-      CBSBrancher<View,ai>::post(home,y);
-      break;
-    default:
-      GECODE_NEVER;
-  }
-}
+//void _cbsbranchSet(Home home, ViewArray<SetViewCBS>& y, CBSBranchingHeuristic s) {
+//  using View = SetViewCBS;
+//  if (home.failed()) return;
+//
+//  switch(s) {
+//    case MAX_SD:
+//      CBSBrancher<View,maxSD>::post(home,y,1);
+//      break;
+//    case MAX_REL_SD:
+//      GECODE_NEVER;
+//      CBSBrancher<View,maxRelSD>::post(home,y,1);
+//      break;
+//    case MAX_REL_RATIO:
+//      GECODE_NEVER;
+////      CBSBrancher<View,maxRelRatio>::post(home,y);
+//      break;
+//    case A_AVG_SD:
+//      CBSBrancher<View,aAvgSD>::post(home,y);
+//      break;
+//    case W_SC_AVG:
+//      GECODE_NEVER;
+////      CBSBrancher<View,wcSCAvg>::post(home,y);
+//      break;
+//    case AI:
+//      CBSBrancher<View,ai>::post(home,y);
+//      break;
+//    default:
+//      GECODE_NEVER;
+//  }
+//}
 
 
 
@@ -960,13 +1027,13 @@ void cbsbranch(Home home, const IntVarArgs& x, CBSBranchingHeuristic s) {
   _cbsbranch<Int::IntView,IntVarArgs>(home,x,s);
 }
 
-void cbsbranch(Home home, const SetVarArgs& x, CBSBranchingHeuristic s) {
-  ViewArray<SetViewCBS> _x(home, x.size());
-  for (int i=0; i<x.size(); i++)
-    _x[i] = SetViewCBS(x[i]);
-
-  _cbsbranchSet(home,_x,s);
-}
+//void cbsbranch(Home home, const SetVarArgs& x, CBSBranchingHeuristic s) {
+//  ViewArray<SetViewCBS> _x(home, x.size());
+//  for (int i=0; i<x.size(); i++)
+//    _x[i] = SetViewCBS(x[i]);
+//
+//  _cbsbranchSet(home,_x,s);
+//}
 
 void cbsbranch(Home home, const BoolVarArgs& x, CBSBranchingHeuristic s) {
   _cbsbranch<Int::BoolView,BoolVarArgs>(home,x,s);
