@@ -36,13 +36,13 @@ public:
     return ES_FIX;
   }
 
-  arma::mat construct_Laplacian_matrix(int size) const {
+  arma::mat construct_Laplacian_matrix() const {
     int n = x.size();
     arma::mat m(n,n, arma::fill::zeros);
     auto ccs = connected_components_no_cycle<SetVarGlbValues>();
 
     for (const auto& cc : ccs) {
-      auto outDegrees = connected_components_out_degrees(cc);
+      auto outDegrees = connected_component_out_degrees(cc);
       int master_node = *cc.begin();
       int master_node_degree = std::accumulate(outDegrees.begin(),
                                                outDegrees.end(), 0);
@@ -55,13 +55,14 @@ public:
       m(master_node, master_node) = master_node_degree;
 
       for (auto node_cc = ++cc.begin(); node_cc != cc.end(); ++node_cc) {
+        assert(*node_cc != master_node);
         m(*node_cc, *node_cc) = 1;
       }
     }
     return std::move(m);
   }
 
-  std::vector<int> connected_components_out_degrees(const std::set<int>& cc) const {
+  std::vector<int> connected_component_out_degrees(const std::set<int>& cc) const {
     std::vector<int> outDegree;
     outDegree.resize((size_t) x.size());
     std::vector<int> degreeCount_Glb((size_t) x.size(), 0);
@@ -79,24 +80,77 @@ public:
 
   void slndist(Space& home, SolnDistribution *dist,
                SolnDistribution::Type type) const override {
-    int n = x.size();
-    arma::mat laplacian = construct_Laplacian_matrix(n);
+    arma::mat laplacian = construct_Laplacian_matrix();
 
-    arma::uvec idx_sm(n-1);
-    int j = 1;
-    int num = 0;
-    int idx = 0;
-    while (num < n) {
-      if (num==j) num++;
-      idx_sm[idx++] = num++;
+    // std::set<n,v> voisins_traitées.
+    // FORALL nodes n
+      // VAR inverse non computé
+      // FORALL voisins v non assignées [SetVarLubValues et notContains]
+        // SI n,v non traité
+          // SI inverse non computé
+            // COMPUTE inverse
+          // Assignation densité
+
+    struct Edge {
+      int minN; // End node with minimum index
+      int maxN; // End node with maximum index
+      Edge(int a, int b) {
+        minN = std::min(a,b);
+        maxN = std::max(a,b);
+      }
+      bool operator<(const Edge& b) const {
+        if (minN == b.minN)
+          return maxN < b.maxN;
+        return minN < b.minN;
+      }
+    };
+
+    std::set<Edge> computed;
+    for (int i=0; i<x.size(); i++) {
+      if (laplacian(i,i) == 1) continue;
+      arma::mat inv;
+      for_every_incertain_set_values(i, [&](int adj) {
+        Edge e{i,adj};
+        if (computed.find(e) == computed.end()) {
+          computed.insert(e);
+          if (inv.empty()) {
+            auto idxs = continuous_idx_vector_skip_i(i, x.size());
+            inv = arma::inv(laplacian.submat(idxs, idxs));
+            std::cout << laplacian << std::endl;
+            std::cout << inv << std::endl;
+          }
+          int jj = i<adj ? adj-1 : adj;
+          double dens = inv(jj,jj);
+          // C'est affreux, j'envoie seulement une densité sur les deux
+          // possibles...
+          dist->setMarginalDistribution(id(), x[i].id(), adj, dens);
+        }
+      });
     }
 
-
-    std::cout << arma::inv(laplacian.submat(idx_sm, idx_sm)) << std::endl;
-
-
-    exit(-1);
   }
+
+  void for_every_incertain_set_values(int i,
+                                      const std::function<void(int)>& f) const {
+    for (SetVarLubValues adj(x[i]); adj(); ++adj) {
+      if (!x[i].contains(adj.val())) {
+        f(adj.val());
+      }
+    }
+
+  }
+
+  arma::uvec continuous_idx_vector_skip_i(int i, int n) const {
+    arma::uvec idxs((arma::uword)n-1);
+    arma::uword num = 0;
+    for (int j=0; j<n-1; j++, num++) {
+      if (j==i) num++;
+      idxs[j] = num;
+    }
+    return std::move(idxs);
+  }
+
+
   void
   slndistsize(SolnDistributionSize *s, unsigned int& domAggr,
                    unsigned int& domAggrB) const override {
@@ -104,9 +158,9 @@ public:
     domAggrB = 0;
     for (int i=0; i<x.size(); i++) {
       if (!x[i].assigned()) {
-        domAggr += x[i].lubSize();
+        domAggr += x[i].lubSize() - x[i].glbSize();
         if (s->varInBrancher(x[i].id()))
-          domAggrB += x[i].lubSize();
+          domAggrB += x[i].lubSize() - x[i].glbSize();
       }
     }
   }
@@ -147,7 +201,7 @@ private:
         }
         // push childs except parent
         for (SetVarValues adj(x[n]); adj(); ++adj)
-          if (adj.val() != parent_n && adj.val() != n)
+          if (adj.val() != parent_n)
             s.push_back({n,adj.val()});
       }
     }

@@ -97,7 +97,7 @@ public:
     } else if (opt.branching() == BRANCH_AFC) {
       branch(*this, x, INT_VAR_AFC_MAX(opt.decay()), INT_VAL_SPLIT_MIN());
     } else if (opt.branching() == BRANCH_SIZE_ACTIVITY) {
-      branch(*this, x, INT_VAR_ACTIVITY_SIZE_MAX(opt.decay()), INT_VAL_MIN());
+      branch(*this, x, INT_VAR_ACTION_SIZE_MAX(opt.decay()), INT_VAL_MIN());
     } else {
 
 
