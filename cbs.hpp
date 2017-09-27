@@ -77,7 +77,7 @@ public:
     records.pos++;
     assert(records.size >= records.pos);
   }
-  void reuse_space(size_t s) {
+  void reuse_mem(size_t s) {
     // We discard the previous entries by setting the count to 0 (we
     // thus reuse previous allocated memory. The number of records can't
     // grow).
@@ -333,14 +333,14 @@ public:
         auto prop = &logProp[prop_id];
         changed = prop->getDomAggr()*recomputation_ratio > aProp->domAggr;
         if (changed)
-          prop->reuse_space(aProp->domAggrB);
+          prop->reuse_mem(aProp->domAggrB);
       } else {
         // We create a new propagator
         logProp[prop_id] = PropInfo(home, aProp->domAggr, aProp->domAggrB);
       }
 
       if (!in_log || changed) {
-        p.propagator().slndist(home,&*this);
+        p.propagator().slndist(home,this);
       }
     }
 
