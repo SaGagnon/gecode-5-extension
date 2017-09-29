@@ -2,7 +2,7 @@
 #define __CBS_HPP__
 
 #include <iostream>
-#include <unordered_map>
+#include <ext/hash_map>
 
 #include <gecode/int.hh>
 
@@ -86,9 +86,10 @@ public:
   }
 };
 
-typedef std::unordered_map<PropId, PropInfo,
-  std::hash<PropId>, std::equal_to<PropId>,
-  Gecode::space_allocator<PropInfo> > LogProp;
+typedef __gnu_cxx::hash_map<PropId, PropInfo,
+  __gnu_cxx::hash<PropId>, __gnu_cxx::equal_to<PropId>,
+  Gecode::space_allocator<PropInfo> >
+  LogProp;
 
 /**
  * \brief Maps variables ids to indexes
@@ -97,7 +98,7 @@ class VarIdToPos : public SharedHandle {
 protected:
   class VarIdToPosO : public SharedHandle::Object {
   public:
-    typedef std::unordered_map<unsigned int, unsigned int> HashMap;
+    typedef __gnu_cxx::hash_map<unsigned int, unsigned int> HashMap;
     HashMap hash_map;
   public:
     VarIdToPosO() = default;
@@ -300,7 +301,7 @@ public:
     // - it supports slndist()
     // - it has unassigned variables that are also in the brancher
     struct Psize { size_t domAggr; size_t domAggrB; };
-    std::unordered_map<PropId, Psize > activeProps;
+    __gnu_cxx::hash_map<PropId, Psize > activeProps;
     for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
       unsigned int domAggr, domAggrB;
       p.propagator().slndistsize(&varInBrancher.getObject(), domAggr, domAggrB);
