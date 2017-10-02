@@ -1,4 +1,3 @@
-
 #%load /home/sam/gecode-5.0.0-extension/analysis/utils.py
 #%%writefile /home/sam/gecode-5.0.0-extension/analysis/utils.py
 from sklearn.linear_model import LogisticRegressionCV
@@ -6,6 +5,7 @@ from sklearn.linear_model import LogisticRegressionCV
 import math
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 import seaborn as sns
 import pandas as pd
 from io import StringIO
@@ -131,7 +131,7 @@ def print_coefs(clf, features):
 
 # TEMP
 
-def solved_graph(df, xcol, xlabel="", heur_to_plot=[]):
+def solved_graph(df, xcol, labels={}, xlabel="", heur_to_plot=[]):
     if heur_to_plot == []:
         heur_to_plot = df.reset_index()['heur'].unique()
     for heur in heur_to_plot:
@@ -140,24 +140,50 @@ def solved_graph(df, xcol, xlabel="", heur_to_plot=[]):
         y = [(i+1)/_len*100 for i,_ in enumerate(x)]
         x = [0] + x
         y = [0] + y
-        plt.plot(x,y, label=heur, linewidth=3)
+        lab = heur
+        if heur in labels: 
+            lab = labels[heur]
+        plt.plot(x,y, label=lab, linewidth=3)
         plt.xscale('log')
 
     if xlabel != "" : plt.xlabel(xlabel)
     else: plt.xlabel(xcol)
-    plt.ylabel('% Solved')
+    plt.ylabel('% solved')
     plt.ylim(0,100)
 
     plt.legend(loc='lower right')
     
-def failures_time_solved(path, title,**kwargs):
+def read_data_grappe(path):
     df = pd.read_csv(path, sep=' ', names=['heur', 'ex', 'failures', 'time'])
     df = df.replace(-1, np.nan)
     df = df.set_index(['heur', 'ex'])
-
-    plt.figure(figsize=(16,7))
+    return df
+    
+def failures_time_solved(df, title='', **kwargs):
     plt.suptitle(title)
     plt.subplot(1,2,1)
     solved_graph(df, 'failures', 'Number of failures', **kwargs)
     plt.subplot(1,2,2)
     solved_graph(df, 'time', 'Time (ms)', **kwargs)
+
+    
+
+def print_graph_latex(plt_func, filename, width, height):    
+    def cm2inch(*tupl):
+        inch = 2.54
+        if isinstance(tupl[0], tuple):
+            return tuple(i/inch for i in tupl[0])
+        else:
+            return tuple(i/inch for i in tupl)
+
+    plt.style.use('seaborn-white')
+    plt.style.use('seaborn-paper')
+    pp = PdfPages(filename + '.pdf')
+
+    plt.figure(figsize=cm2inch(width, height))
+
+    plt_func()
+    
+    plt.tight_layout()
+    plt.savefig(pp, format='pdf')
+    pp.close()
