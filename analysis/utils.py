@@ -131,7 +131,7 @@ def print_coefs(clf, features):
 
 # TEMP
 
-def solved_graph(df, xcol, labels={}, xlabel="", heur_to_plot=[]):
+def solved_graph(df, xcol, labels={}, xlabel="", ylabel=False, heur_to_plot=[]):
     if heur_to_plot == []:
         heur_to_plot = df.reset_index()['heur'].unique()
     for heur in heur_to_plot:
@@ -143,12 +143,14 @@ def solved_graph(df, xcol, labels={}, xlabel="", heur_to_plot=[]):
         lab = heur
         if heur in labels: 
             lab = labels[heur]
-        plt.plot(x,y, label=lab, linewidth=3)
+        plt.plot(x,y, label=lab)
         plt.xscale('log')
 
     if xlabel != "" : plt.xlabel(xlabel)
     else: plt.xlabel(xcol)
-    plt.ylabel('% solved')
+        
+    if ylabel: plt.ylabel('% solved')
+    else: plt.setp(plt.gca().get_yticklabels(), visible=False)
     plt.ylim(0,100)
 
     plt.legend(loc='lower right')
@@ -162,7 +164,7 @@ def read_data_grappe(path):
 def failures_time_solved(df, title='', **kwargs):
     plt.suptitle(title)
     plt.subplot(1,2,1)
-    solved_graph(df, 'failures', 'Number of failures', **kwargs)
+    solved_graph(df, 'failures', 'Number of failures', ylabel=True, **kwargs)
     plt.subplot(1,2,2)
     solved_graph(df, 'time', 'Time (ms)', **kwargs)
 
