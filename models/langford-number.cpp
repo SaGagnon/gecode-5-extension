@@ -99,7 +99,8 @@ public:
   enum {
     BRANCH_NONE,
     BRANCH_CBS_MAX_SD,
-    BRANCH_CBS_A_AVG_SD
+    BRANCH_CBS_A_AVG_SD,
+    BRANCH_AFC_SIZE
   };
   /// Construct model
   LangfordNumber(const LangfordNumberOptions& opt)
@@ -182,6 +183,8 @@ public:
       assert(opt.propagation() == PROP_EXTENSIONAL);
       cbsbranch(*this, y, CBSBranchingHeuristic::A_AVG_SD);
       branch(*this, y, INT_VAR_SIZE_MIN(), INT_VAL_MAX());
+    } else if (opt.branching() == BRANCH_AFC_SIZE) {
+      branch(*this, y, INT_VAR_AFC_SIZE_MAX(opt.decay()), INT_VAL_SPLIT_MIN());
     }
   }
 
@@ -221,6 +224,7 @@ main(int argc, char* argv[]) {
 
   opt.branching(LangfordNumber::BRANCH_NONE, "none",
                 "Branch on rows/columns in order");
+  opt.branching(LangfordNumber::BRANCH_AFC_SIZE, "afc");
   opt.branching(LangfordNumber::BRANCH_CBS_MAX_SD,
                 "cbs_max_sd", "maxSD counting base search");
   opt.branching(LangfordNumber::BRANCH_CBS_A_AVG_SD,
