@@ -158,10 +158,10 @@ public:
 
         if (rows*width() > cols*height()) {
           for (int w=0; w<width(); w++)
-            branch(*this, m.col(w), INT_VAR_NONE(), INT_VAL_MAX());
+            branch(*this, m.col(w), BOOL_VAR_NONE(), BOOL_VAL_MAX());
         } else {
           for (int h=0; h<height(); h++)
-            branch(*this, m.row(h), INT_VAR_NONE(), INT_VAL_MAX());
+            branch(*this, m.row(h), BOOL_VAR_NONE(), BOOL_VAL_MAX());
         }
       }
         break;
@@ -171,7 +171,7 @@ public:
          * equivalent to SIZE/AFC in this case since the variables are
          * binary.
          */
-        branch(*this, b, INT_VAR_AFC_MAX(opt.decay()), INT_VAL_MAX());
+        branch(*this, b, BOOL_VAR_AFC_MAX(opt.decay()), BOOL_VAL_MAX());
         break;
       case BRANCH_CBS_MAX_SD:
         cbsbranch(*this, b, CBSBranchingHeuristic::MAX_SD);
@@ -203,8 +203,7 @@ public:
     #endif
 
     // In case there's no more propagators with cbs instrumentation
-    branch(*this, b, INT_VAR_SIZE_MIN(), INT_VAL_SPLIT_MIN());
-
+    branch(*this, b, BOOL_VAR_AFC_MAX(opt.decay()), BOOL_VAL_MAX());
   }
 
   /// Constructor for cloning \a s
