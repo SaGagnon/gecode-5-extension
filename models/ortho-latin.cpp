@@ -134,7 +134,8 @@ public:
     }
 
     if (opt.branching() == BRANCH_CBS_MAX_SD) {
-      cbsbranch(*this, z, CBSBranchingHeuristic::MAX_SD);
+      cbsbranch(*this, x1, CBSBranchingHeuristic::MAX_SD);
+      cbsbranch(*this, x2, CBSBranchingHeuristic::MAX_SD);
     } else if (opt.branching() == BRANCH_CBS_A_AVG_SD) {
       cbsbranch(*this, z, CBSBranchingHeuristic::A_AVG_SD);
     }
