@@ -194,7 +194,7 @@ public:
   }
 };
 
-template<class View, typename Derived>
+template<class View>
 class CBSBrancher : public Brancher, public SolnDistribution {
 public:
   // A choice for branching
@@ -209,11 +209,12 @@ protected:
   VarInBrancher varInBrancher;
   LogProp logProp;
 public:
-  CBSBrancher(Home home, ViewArray<View>& x0, double recomputation_ratio0)
+  CBSBrancher(Home home, ViewArray<View>& x0, double recomputation_ratio0=1)
     : Brancher(home), recomputation_ratio(recomputation_ratio0),
       x(x0), varInBrancher(x0),
       logProp(LogProp::size_type(), LogProp::hasher(),
-                LogProp::key_equal(), LogProp::allocator_type(home)) {
+              LogProp::key_equal(), LogProp::allocator_type(home)) {
+    assert(recomputation_ratio0 > 0 && recomputation_ratio0 <= 1);
     // Because we must call the destructor of aAvgSD
     home.notice(*this,AP_DISPOSE);
     // The VarIdToPos object is first implicitly constructed with the default
@@ -224,11 +225,6 @@ public:
     // We assign an index for each variable id
     for (unsigned int i=0; i<x.size(); i++)
       varpos[x[i].id()] = i;
-  }
-  static void post(Home home, ViewArray<View>& x,
-                   double recomputation_ratio=1) {
-    assert(recomputation_ratio > 0 && recomputation_ratio <= 1);
-    (void) new (home) Derived(home,x,recomputation_ratio);
   }
   size_t dispose(Space& home) override {
     home.ignore(*this, AP_DISPOSE);
@@ -256,9 +252,6 @@ public:
     x.update(home,share,b.x);
     for (auto& elem : logProp)
       elem.second = PropInfo(home, b.logProp[elem.first]);
-  }
-  Brancher* copy(Space& home, bool share) override {
-    return new (home) Derived(home,share,*this);
   }
   bool status(const Space& home) const override {
     auto& h = const_cast<Space&>(home);
@@ -388,17 +381,17 @@ public:
 };
 
 template<class View>
-class MAXSD : public CBSBrancher<View,MAXSD<View>> {
-  using CBSBrancher<View,MAXSD<View>>::x;
-  using CBSBrancher<View,MAXSD<View>>::varpos;
-  using CBSBrancher<View,MAXSD<View>>::for_every_log_entry;
-  typedef typename CBSBrancher<View,MAXSD<View>>::Candidate Candidate;
+class MAXSD : public CBSBrancher<View> {
+  using CBSBrancher<View>::x;
+  using CBSBrancher<View>::varpos;
+  using CBSBrancher<View>::for_every_log_entry;
+  typedef typename CBSBrancher<View>::Candidate Candidate;
 public:
   MAXSD(const Home& home, ViewArray<View>& x0, double recomputation_ratio0)
-    : CBSBrancher<View,MAXSD<View>>(home, x0, recomputation_ratio0) {}
+    : CBSBrancher<View>(home, x0, recomputation_ratio0) {}
 
-  MAXSD(Space& home, bool share, CBSBrancher<View,MAXSD<View>>& b)
-    : CBSBrancher<View,MAXSD<View>>(home, share, b) {}
+  MAXSD(Space& home, bool share, CBSBrancher<View>& b)
+    : CBSBrancher<View>(home, share, b) {}
 
   Candidate getChoice(Space& home) override {
     PropInfo::Record best{0,0,0};
@@ -411,6 +404,13 @@ public:
     });
     assert(best.var_id != 0);
     return {varpos[best.var_id],best.val};
+  }
+  Brancher* copy(Space& home, bool share) override {
+    return new (home) MAXSD(home,share,*this);
+  }
+  static void post(Home home, ViewArray<View>& x,
+                   double recomputation_ratio=1) {
+    (void) new (home) MAXSD(home,x,recomputation_ratio);
   }
 };
 
