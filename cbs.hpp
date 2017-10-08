@@ -86,45 +86,44 @@ public:
   }
 };
 
-typedef __gnu_cxx::hash_map<PropId, PropInfo,
-  __gnu_cxx::hash<PropId>, __gnu_cxx::equal_to<PropId>,
-  Gecode::space_allocator<PropInfo> >
-  LogProp;
+using LogProp = __gnu_cxx::hash_map<PropId, PropInfo, __gnu_cxx::hash<PropId>,
+  __gnu_cxx::equal_to<PropId>, Gecode::space_allocator<PropInfo>>;
 
 /**
  * \brief Maps variables ids to indexes
  */
-class VarIdToPos : public SharedHandle {
+template<class Key, class Val>
+class SharedHashMap : public SharedHandle {
+  using HashMap =  __gnu_cxx::hash_map<Key,Val>;
 protected:
-  class VarIdToPosO : public SharedHandle::Object {
+  class SharedHashMapO : public SharedHandle::Object {
   public:
-    typedef __gnu_cxx::hash_map<unsigned int, unsigned int> HashMap;
     HashMap hash_map;
   public:
-    VarIdToPosO() = default;
-    VarIdToPosO(const VarIdToPosO& o)
+    SharedHashMapO() = default;
+    SharedHashMapO(const SharedHashMapO& o)
       : hash_map(o.hash_map) {}
     Object* copy() const override {
-      return new VarIdToPosO(*this);
+      return new SharedHashMapO(*this);
     }
-    ~VarIdToPosO() override = default;
+    ~SharedHashMapO() override = default;
   };
 public:
-  VarIdToPos() = default;
+  SharedHashMap() = default;
   void init() {
     assert(object() == nullptr);
-    object(new VarIdToPosO());
+    object(new SharedHashMapO());
   }
   bool isIn(unsigned int i) const {
-    VarIdToPosO::HashMap *hm = &static_cast<VarIdToPosO*>(object())->hash_map;
+    auto *hm = &static_cast<SharedHashMapO*>(object())->hash_map;
     return hm->find(i) != hm->end();
   }
   unsigned int& operator[](unsigned int i) {
-    return static_cast<VarIdToPosO*>(object())->hash_map[i];
+    return static_cast<SharedHashMapO*>(object())->hash_map[i];
   }
   unsigned int operator[](unsigned int i) const {
     assert(isIn(i));
-    return static_cast<VarIdToPosO*>(object())->hash_map[i];
+    return static_cast<SharedHashMapO*>(object())->hash_map[i];
   }
 };
 
@@ -205,7 +204,7 @@ public:
 protected:
   const double recomputation_ratio;
   ViewArray<View> x;
-  VarIdToPos varpos;
+  SharedHashMap<VarId, unsigned int> varpos;
   VarInBrancher varInBrancher;
   LogProp logProp;
 public:
@@ -340,7 +339,13 @@ public:
 
     // We find the choice.
     Candidate c = getChoice(home);
+    std::cout << "choice" << std::endl;
     assert(!x[c.idx].assigned());
+
+    for (Int::ViewValues<View> val(x[c.idx]); val(); ++val) {
+      std::cout << val.val() << std::endl;
+    }
+
     assert(x[c.idx].in(c.val));
 
     return new PosValChoice<int>(*this,2,c.idx,c.val);
@@ -374,7 +379,10 @@ public:
       auto prop = &elem.second;
       for (int i=0; i<prop->getPosRec(); i++) {
         auto r = (*prop)[i];
-        f(prop_id, prop->getSlnCnt(), r.var_id, r.val, r.dens);
+        auto pos = varpos[r.var_id];
+        // With recomputation_ratio, it is possible some records are no more good.
+        if (!x[pos].assigned() && x[pos].in(r.val))
+          f(prop_id, prop->getSlnCnt(), r.var_id, r.val, r.dens);
       }
     }
   }
@@ -398,9 +406,8 @@ public:
     for_every_log_entry([&](PropId prop_id, SlnCnt slnCnt,
                             VarId var_id, Val val, SlnCnt dens) {
       unsigned int pos = varpos[var_id];
-      if (!x[pos].assigned() && x[pos].in(val))
-        if (dens > best.dens || (dens == best.dens && var_id < best.var_id))
-          best = {var_id, val, dens};
+      if (dens > best.dens || (dens == best.dens && var_id < best.var_id))
+        best = {var_id, val, dens};
     });
     assert(best.var_id != 0);
     return {varpos[best.var_id],best.val};
