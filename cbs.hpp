@@ -118,10 +118,10 @@ public:
     auto *hm = &static_cast<SharedHashMapO*>(object())->hash_map;
     return hm->find(i) != hm->end();
   }
-  unsigned int& operator[](unsigned int i) {
+  Val& operator[](unsigned int i) {
     return static_cast<SharedHashMapO*>(object())->hash_map[i];
   }
-  unsigned int operator[](unsigned int i) const {
+  Val operator[](unsigned int i) const {
     assert(isIn(i));
     return static_cast<SharedHashMapO*>(object())->hash_map[i];
   }
@@ -339,15 +339,8 @@ public:
 
     // We find the choice.
     Candidate c = getChoice(home);
-    std::cout << "choice" << std::endl;
-    assert(!x[c.idx].assigned());
-
-    for (Int::ViewValues<View> val(x[c.idx]); val(); ++val) {
-      std::cout << val.val() << std::endl;
-    }
-
-    assert(x[c.idx].in(c.val));
-
+//    assert(!x[c.idx].assigned());
+//    assert(x[c.idx].in(c.val));
     return new PosValChoice<int>(*this,2,c.idx,c.val);
   }
   const Choice* choice(const Space&, Archive& e) override {
