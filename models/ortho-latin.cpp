@@ -37,128 +37,121 @@
 
 #include <gecode/driver.hh>
 #include <gecode/int.hh>
+#include <map>
 
 #include "cbs.hpp"
 
 using namespace Gecode;
 
-
-//template<class View>
-//ViewArray<View>& combine(const Home& home, const ViewArray<View>& a,
-//                         const ViewArray<View>& b) {
-//  ViewArray<View> c(a.size() + b.size());
-//  for (int i=0; i<a.size(); i++)
-//    c[i] = a[i];
-//  for (int i=0; i<b.size(); i++)
-//    c[i+a.size()] = b[i];
-//
-//  return std::move(c);
-//}
-
-using HashMap = SharedHashMap<VarId, VarId>;
-
-
 using CBSBrancherInt = CBSBrancher<Int::IntView>;
+
+using zVarId = VarId;
+using xVarId = VarId;
+
+using IdMap = SharedHashMap<zVarId, std::pair<xVarId, xVarId>>;
+
+std::pair<int, int> vals(int n, int zVal) {
+  return std::make_pair(zVal % n + 1, zVal / n + 1 );
+};
 
 class OLBrancher : public CBSBrancherInt {
 protected:
   const int n;
-  HashMap x1_to_z;
-  HashMap x2_to_z;
+  ViewArray<Int::IntView> z;
+  IdMap zId_to_xs;
 public:
   OLBrancher(const Home& home, ViewArray<Int::IntView>& x,
-             HashMap& x1_to_z0, HashMap& x2_to_z0, int n0)
-    : CBSBrancherInt(home, x), n(n0), x1_to_z(x1_to_z0), x2_to_z(x2_to_z0) {}
+             ViewArray<Int::IntView>& z0,
+             IdMap& zId_to_xs0, int n0)
+    : CBSBrancherInt(home, x), n(n0), z(z0), zId_to_xs(zId_to_xs0) {}
 
   OLBrancher(Space& home, bool share, OLBrancher& b)
     : CBSBrancherInt(home, share, b), n(b.n) {
-    x1_to_z.update(home,share,b.x1_to_z);
-    x1_to_z.update(home,share,b.x2_to_z);
+    z.update(home,share,b.z);
+    zId_to_xs.update(home,share,b.zId_to_xs);
   }
   Candidate getChoice(Space& home) override {
-      struct Best {
-        Val val;
-        Dens dens;
-      };
 
-    using ZVarId = VarId;
-    __gnu_cxx::hash_map<ZVarId, std::pair<Best,Best>> aggr;
-
+    std::map<xVarId, std::map<Val, Dens>> densities;
     for_every_log_entry([&](PropId prop_id, SlnCnt slnCnt,
                             VarId var_id, Val val, SlnCnt dens) {
-      assert(!x1_to_z.isIn(var_id) || !x2_to_z.isIn(var_id));
-      if (x1_to_z.isIn(var_id)) {
-        auto zVarId = x1_to_z[var_id];
 
-        if (aggr.find(zVarId) == aggr.end()) {
-          auto b = Best{-1, 0};
-          aggr[zVarId] = std::make_pair(b, b);
-        }
+      if (densities.find(var_id) == densities.end())
+        densities[var_id] = std::map<Val, Dens>{};
 
-        if (aggr[zVarId].first.dens < dens)
-          aggr[zVarId].first = Best{val,dens};
-      } else if (x2_to_z.isIn(var_id)) {
-        auto zVarId = x2_to_z[var_id];
-
-        if (aggr.find(zVarId) == aggr.end()) {
-          auto b = Best{-1, 0};
-          aggr[zVarId] = std::make_pair(b, b);
-        }
-
-        if (aggr[zVarId].second.dens < dens)
-          aggr[zVarId].second = Best{val,dens};
+      if (densities[var_id].find(val) == densities[var_id].end()) {
+        densities[var_id][val] = dens;
+      } else {
+        densities[var_id][val] = std::max(densities[var_id][val], dens);
       }
     });
 
-    using E = decltype(aggr)::value_type;
-    auto best =
-      *std::max_element(aggr.begin(), aggr.end(), [](const E& a,
-                                                     const E& b) {
+    struct { int pos; Val val; Dens max; } best{-1, 0, 0};
 
-        return a.second.first.dens + a.second.second.dens <
-          b.second.first.dens + b.second.second.dens;
-    });
+    for (int i=0; i<z.size(); i++) {
+      if (z[i].assigned()) continue;
+      auto xIds = zId_to_xs[z[i].id()];
+      for (Int::ViewValues<Int::IntView> val(z[i]); val(); ++val) {
+        auto xVals = vals(n, val.val());
+        double dens = 0;
+        if (densities.find(xIds.first) != densities.end()) {
+          dens = std::max(densities[xIds.first][xVals.first], dens);
+        }
+        if (densities.find(xIds.second) != densities.end()) {
+          dens = std::max(densities[xIds.second][xVals.second], dens);
+        }
+        if (dens == 0) continue;
+        if (dens > best.max)
+          best = {i, val.val(), dens};
+      }
+    }
 
-    auto zVarIdx = best.first;
-    auto v1 = best.second.first.val;
-    auto v2 = best.second.second.val;
-
-    auto zVal = (v2-1)*n + v1-1;
-    return Candidate{varpos[zVarIdx], zVal};
+    assert(best.pos != -1);
+    return {(unsigned int)best.pos, best.val};
+  }
+  ExecStatus commit(Space& home, const Choice& c, unsigned int a) override {
+    const auto& pvc = static_cast<const PosValChoice<int>&>(c);
+    int pos=pvc.pos().pos, val=pvc.val();
+    if (a == 0)
+      return me_failed(z[pos].eq(home,val)) ? ES_FAILED : ES_OK;
+    else
+      return me_failed(z[pos].nq(home,val)) ? ES_FAILED : ES_OK;
   }
   Brancher* copy(Space& home, bool share) override  {
     return new (home) OLBrancher(home,share,*this);
   }
   static void post(Home home, ViewArray<Int::IntView>& x,
-                   HashMap& x1_to_z, HashMap& x2_to_z, int n) {
-    (void) new (home) OLBrancher(home, x, x1_to_z, x2_to_z, n);
+                   ViewArray<Int::IntView>& z,
+                   IdMap zId_to_xs, int n) {
+    (void) new (home) OLBrancher(home, x, z, zId_to_xs, n);
   }
 };
 
 void olbrancher(Home home, const IntVarArgs& z, const IntVarArgs& x1,
                 const IntVarArgs& x2, int n) {
-  auto s = (int)z.size() + x1.size() + x2.size();
-  ViewArray<Int::IntView> y(home, s);
 
+  ViewArray<Int::IntView> y;
   {
+    auto s = x1.size() + x2.size();
+    y = ViewArray<Int::IntView>(home, s);
+
     int i = 0;
-    for (int j=0; j< z.size(); j++) y[i++] =  z[j];
     for (int j=0; j<x1.size(); j++) y[i++] = x1[j];
     for (int j=0; j<x2.size(); j++) y[i++] = x2[j];
+    assert(i == s);
   }
 
+  ViewArray<Int::IntView> z0(home,z);
 
-  HashMap x1_to_z;
-  x1_to_z.init();
-  HashMap x2_to_z;
-  x2_to_z.init();
-
-  for (int i=0; i<z.size(); i++) {
-    x1_to_z[x1[i].varimp()->id()] = z[i].varimp()->id();
-    x2_to_z[x2[i].varimp()->id()] = z[i].varimp()->id();
+  IdMap zId_to_xs;
+  {
+    zId_to_xs.init();
+    auto id = [](const decltype(z[0])& x) { return x.varimp()->id(); };
+    for (int i = 0; i < z.size(); i++)
+      zId_to_xs[id(z[i])] = std::make_pair(id(x1[i]), id(x2[i]));
   }
 
-  OLBrancher::post(home, y, x1_to_z, x2_to_z, n);
+  OLBrancher::post(home, y, z0, zId_to_xs, n);
 }
 
 /**
