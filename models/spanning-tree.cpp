@@ -152,15 +152,15 @@ public:
 
 
   void
-  slndistsize(SolnDistributionSize *s, unsigned int& domAggr,
-                   unsigned int& domAggrB) const override {
-    domAggr = 0;
-    domAggrB = 0;
+  slndistsize(SolnDistributionSize *s, unsigned int& domSum,
+                   unsigned int& domSumB) const override {
+    domSum = 0;
+    domSumB = 0;
     for (int i=0; i<x.size(); i++) {
       if (!x[i].assigned()) {
-        domAggr += x[i].lubSize() - x[i].glbSize();
+        domSum += x[i].lubSize() - x[i].glbSize();
         if (s->varInBrancher(x[i].id()))
-          domAggrB += x[i].lubSize() - x[i].glbSize();
+          domSumB += x[i].lubSize() - x[i].glbSize();
       }
     }
   }

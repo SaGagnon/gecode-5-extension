@@ -40,16 +40,16 @@ private:
 
   SlnCnt slnCount{0};
   /// Sum of all domains of non assigned variable
-  size_t domAggr{0};
+  size_t domSum{0};
 public:
   PropInfo() = default;
-  PropInfo(Space& home, size_t domAggr0, size_t domAggrB)
-    : domAggr(domAggr0) {
-    records.x = home.alloc<Record>(domAggrB);
-    records.size = domAggrB;
+  PropInfo(Space& home, size_t domSum0, size_t domSumB)
+    : domSum(domSum0) {
+    records.x = home.alloc<Record>(domSumB);
+    records.size = domSumB;
   }
   PropInfo(Space& home, const PropInfo& o)
-    : domAggr(o.domAggr), records(o.records), slnCount(o.slnCount) {
+    : domSum(o.domSum), records(o.records), slnCount(o.slnCount) {
     records.x = home.alloc<Record>(records.size);
     memcpy(records.x, o.records.x, records.pos * sizeof(Record));
   }
@@ -61,8 +61,8 @@ public:
   Record operator[](unsigned int i) const {
     return const_cast<PropInfo*>(this)->operator[](i);
   }
-  size_t getDomAggr() const { return domAggr; }
-  size_t getDomAggrB() const { return records.size; }
+  size_t getDomSum() const { return domSum; }
+  size_t getDomSumB() const { return records.size; }
   unsigned int getPosRec() const { return records.pos; }
 
   SlnCnt getSlnCnt() const { return slnCount; }
@@ -131,7 +131,7 @@ class VarInBrancher : public SharedHandle {
 protected:
   class VarInBrancherO : public SharedHandle::Object {
   public:
-    class BoolArray : public SolnDistributionSize {
+    class BoolArray : public SlnDistSize {
     private:
       VarId min_id{0};
       VarId max_id{0};
@@ -168,7 +168,7 @@ protected:
         std::cout << "CECI DOIT APPARAITRE" << std::endl;
         heap.free(inBrancher, size());
       }
-      bool varInBrancher(VarId var_id) const override {
+      bool inbrancher(VarId var_id) const override {
         if (var_id-min_id < 0) return false;
         if (var_id-min_id >= size()) return false;
         return get(var_id);
@@ -194,7 +194,7 @@ public:
 };
 
 template<class View>
-class CBSBrancher : public Brancher, public SolnDistribution {
+class CBSBrancher : public Brancher, public SlnDist {
 public:
   // A choice for branching
   struct Candidate {
@@ -256,13 +256,13 @@ public:
     auto& h = const_cast<Space&>(home);
     for (Propagators p(h, PropagatorGroup::all); p(); ++p) {
       // Sum of domains of all variable in propagator
-      unsigned int domAggr;
+      unsigned int domSum;
       // Same, but for variables that are also in this brancher.
-      unsigned int domAggrB;
-      p.propagator().slndistsize(&varInBrancher.getObject(), domAggr, domAggrB);
+      unsigned int domSumB;
+      p.propagator().slndistsize(&varInBrancher.getObject(), domSum, domSumB);
       // If there's still a propagator that has an unassigned variable that is
       // also in the brancher, we tell our brancher has still work to do.
-      if (domAggrB > 0)
+      if (domSumB > 0)
         return true;
     }
     return false;
@@ -272,9 +272,12 @@ public:
   bool compute(VarId var_id) const override {
     return true;
   }
+  Type type() const override {
+    return SlnDist::ALL;
+  }
   // Method used by all propagators for communicating calculated densities for
   // each of its (variable,value) pair.
-  void setMarginalDistribution(PropId prop_id, VarId var_id, Val val,
+  void marginaldist(PropId prop_id, VarId var_id, Val val,
                                        Dens density) override {
     assert(var_id != 0);
     if (!varpos.isIn(var_id)) return;
@@ -284,7 +287,7 @@ public:
 
     logProp[prop_id].insert_record(PropInfo::Record{var_id, val, density});
   }
-  void setSupportSize(PropId prop_id, SlnCnt count) override {
+  void supportsize(PropId prop_id, SlnCnt count) override {
     logProp[prop_id].setSlnCnt(count);
   }
   const Choice* choice(Space& home) override {
@@ -292,13 +295,13 @@ public:
     // We considere a propagator as "active" only if
     // - it supports slndist()
     // - it has unassigned variables that are also in the brancher
-    struct Psize { size_t domAggr; size_t domAggrB; };
+    struct Psize { size_t domSum; size_t domSumB; };
     __gnu_cxx::hash_map<PropId, Psize > activeProps;
     for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
-      unsigned int domAggr, domAggrB;
-      p.propagator().slndistsize(&varInBrancher.getObject(), domAggr, domAggrB);
-      if (domAggrB != 0) {
-        activeProps[p.propagator().id()] = {domAggr, domAggrB};
+      unsigned int domSum, domSumB;
+      p.propagator().slndistsize(&varInBrancher.getObject(), domSum, domSumB);
+      if (domSumB != 0) {
+        activeProps[p.propagator().id()] = {domSum, domSumB};
       }
     }
 
@@ -324,12 +327,12 @@ public:
 
       if (in_log) {
         auto prop = &logProp[prop_id];
-        changed = prop->getDomAggr()*recomputation_ratio > aProp->domAggr;
+        changed = prop->getDomSum()*recomputation_ratio > aProp->domSum;
         if (changed)
-          prop->reuse_mem(aProp->domAggrB);
+          prop->reuse_mem(aProp->domSumB);
       } else {
         // We create a new propagator
-        logProp[prop_id] = PropInfo(home, aProp->domAggr, aProp->domAggrB);
+        logProp[prop_id] = PropInfo(home, aProp->domSum, aProp->domSumB);
       }
 
       if (!in_log || changed) {
