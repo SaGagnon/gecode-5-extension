@@ -168,75 +168,90 @@ public:
   }
 
   ExecStatus propagate(Space& home, const ModEventDelta& med) override {
-    // unvisited nodes
-    auto u_nodes = utils::set_zero_to<node_t>(graph.n_nodes);
-    while (!u_nodes.empty()) {
-      std::set<node_t> CC;
 
+    using visit_func = std::function<ExecStatus(node_t)>;
+    using adj_func = std::function<ExecStatus(node_t,BoolView&)>;
+    auto DFS = [&](node_t start, visit_func visit, adj_func adj) {
       using parent_node_t = node_t;
       std::deque<std::pair<parent_node_t, node_t>> stack;
-      stack.emplace_back(*u_nodes.begin(), *u_nodes.begin());
+      stack.emplace_back(start, start);
       while (!stack.empty()) {
         parent_node_t parent_node; node_t node;
         std::tie(parent_node, node) = stack.back();
         stack.pop_back();
-
-        // If no new element inserted
-        if (!CC.insert(node).second)
-          return ES_FAILED;
-        u_nodes.erase(node);
-
+        auto ret = visit(node);
+        if (ret != ES_OK) return ret;
         for (int i=0; i<graph.size[node]; i++) {
           node_t adj_node; BoolView adj_view;
           std::tie(adj_node, adj_view) = graph.x[node][i];
           if (adj_view.one() && adj_node != parent_node) {
             stack.emplace_back(node, adj_node);
           }
+          ret = adj(adj_node, adj_view);
+          if (ret != ES_OK) return ret;
         }
       }
+    };
 
-      stack.emplace_back(*CC.begin(), *CC.begin());
+
+    // unvisited nodes
+    auto u_nodes = utils::set_zero_to<node_t>(graph.n_nodes);
+    while (!u_nodes.empty()) {
+      std::set<node_t> CC;
+
+      // Construction of CC (connected component) without cycles
+      auto ret = DFS( *u_nodes.begin(),
+                      [&](node_t node) {
+                        if (!CC.insert(node).second)
+                          return ES_FAILED;
+                        u_nodes.erase(node);
+                        return ES_OK;
+                      },
+                      [](node_t,BoolView&) { return ES_OK; }
+      );
+      if (ret != ES_OK) return ret;
+
+      // If there's only one node
       if (CC.size() == 1) {
-        parent_node_t parent_node; node_t node;
-        std::tie(parent_node, node) = stack.back();
 
+        // Number of adjacent unassigned edges
         int n_unassigned = 0;
         BoolView last_view_unassigned;
 
-        for (int i=0; i<graph.size[node]; i++) {
-          node_t adj_node; BoolView adj_view;
-          std::tie(adj_node, adj_view) = graph.x[node][i];
-          if (adj_view.none()) {
-            n_unassigned++;
-            last_view_unassigned = adj_view;
-          }
-        }
+        ret = DFS( *CC.begin(),
+                   [](node_t) { return ES_OK; },
+                   [&](node_t, BoolView& adj_v) {
+                     if (adj_v.none()) {
+                       n_unassigned++;
+                       last_view_unassigned = adj_v;
+                     }
+                     return ES_OK;
+                   }
+        );
+        if (ret != ES_OK) return ret;
 
+        // If there's no adjacent edges, we fail
         if (n_unassigned == 0)
           return ES_FAILED;
-        if (n_unassigned == 1) {
+        // If there's only one, we are obliged to take it
+        if (n_unassigned == 1)
           last_view_unassigned.eq(home, 1);
-        }
 
       } else if (CC.size() > 3) {
-        while (!stack.empty()) {
-          parent_node_t parent_node; node_t node;
-          std::tie(parent_node, node) = stack.back();
-          stack.pop_back();
 
-          for (int i=0; i<graph.size[node]; i++) {
-            node_t adj_node; BoolView adj_view;
-            std::tie(adj_node, adj_view) = graph.x[node][i];
-            if (adj_view.one() && adj_node != parent_node) {
-              assert(CC.find(adj_node) != CC.end());
-              stack.emplace_back(node, adj_node);
-            } else if (adj_view.none() && CC.find(adj_node) != CC.end()) {
-              adj_view.eq(home, 0);
-            }
-          }
-        }
+        // We make sure there's no unassigned edges pointing to the CC itself
+        ret = DFS(*CC.begin(),
+                  [](node_t) { return ES_OK; },
+                  [&](node_t adj_n, BoolView& adj_v) {
+                    if (adj_v.none() && CC.find(adj_n) != CC.end())
+                      adj_v.eq(home, 0);
+                    return ES_OK;
+                  }
+        );
+        if (ret != ES_OK) return ret;
       }
     }
+
     return ES_FIX;
   }
 
