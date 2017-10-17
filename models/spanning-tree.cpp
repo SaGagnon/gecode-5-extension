@@ -173,19 +173,19 @@ public:
     using adj_func = std::function<ExecStatus(node_t,BoolView&)>;
     auto DFS = [&](node_t start, visit_func visit, adj_func adj) {
       using parent_node_t = node_t;
-      std::deque<std::pair<parent_node_t, node_t>> stack;
-      stack.emplace_back(start, start);
+      std::stack<std::pair<parent_node_t, node_t>> stack;
+      stack.emplace(start, start);
       while (!stack.empty()) {
         parent_node_t parent_node; node_t node;
-        std::tie(parent_node, node) = stack.back();
-        stack.pop_back();
+        std::tie(parent_node, node) = stack.top();
+        stack.pop();
         auto ret = visit(node);
         if (ret != ES_OK) return ret;
         for (int i=0; i<graph.size[node]; i++) {
           node_t adj_node; BoolView adj_view;
           std::tie(adj_node, adj_view) = graph.x[node][i];
           if (adj_view.one() && adj_node != parent_node) {
-            stack.emplace_back(node, adj_node);
+            stack.emplace(node, adj_node);
           }
           ret = adj(adj_node, adj_view);
           if (ret != ES_OK) return ret;
@@ -250,6 +250,25 @@ public:
         );
         if (ret != ES_OK) return ret;
       }
+
+      // If the connected component does not contain the whole graph, it must
+      // at least include an unassigned edge (for the whole graph to be
+      // connected)
+      if (CC.size() != graph.n_nodes) {
+        unsigned int n_unassigned = 0;
+        ret = DFS(*CC.begin(),
+                  [](node_t) { return ES_OK; },
+                  [&](node_t adj_n, BoolView& adj_v) {
+                    if (adj_v.none())
+                      n_unassigned += 1;
+                    return ES_OK;
+                  }
+        );
+        if (ret != ES_OK) return ret;
+
+        if (n_unassigned == 0)
+          return ES_FAILED;
+      }
     }
 
     return ES_FIX;
@@ -279,13 +298,14 @@ void spanning_tree_ctr(Space& home, const BoolVarArgs& e,
   SpanningTreeCtr::post(home, _e, edges, n_nodes);
 }
 
-class SpanningTree : public Script {
+class ConstrainedSpanningTree : public Script {
 private:
 protected:
   BoolVarArray e;
+  const std::string instance;
 public:
-  explicit SpanningTree(const InstanceOptions& opt)
-    : Script(opt) {
+  explicit ConstrainedSpanningTree(const InstanceOptions& opt)
+    : Script(opt), instance(opt.instance()) {
 
     n_nodes_t           n_nodes;
     n_edges_t           n_edges;
@@ -297,23 +317,88 @@ public:
 
     spanning_tree_ctr(*this, e, edges, n_nodes);
 
+    std::vector<BoolVarArgs> adj_edges(n_nodes);
+    assert(adj_edges.size() == n_nodes);
+    for (int i=0; i<n_edges; i++) {
+      node_t n1, n2;
+      std::tie(n1, n2) = edges[i];
+
+      adj_edges[n1] << e[i];
+      adj_edges[n2] << e[i];
+    }
+
+    for (int i=0; i<n_nodes; i++) {
+      assert(adj_edges[i].size() != 0);
+//      rel(*this, sum(adj_edges[i]) <= 2);
+    }
+
 //    cbsbranch(*this, e,  CBSBranchingHeuristic::MAX_SD);
     branch(*this, e, BOOL_VAR_NONE(), BOOL_VAL_MIN());
   }
 
-  SpanningTree(bool share, SpanningTree& s)
-    : Script(share,s) {
+  ConstrainedSpanningTree(bool share, ConstrainedSpanningTree& s)
+    : Script(share,s), instance(s.instance) {
     e.update(*this, share, s.e);
   }
 
   Space* copy(bool share) override {
-    return new SpanningTree(share,*this);
+    return new ConstrainedSpanningTree(share,*this);
   }
 
   void print(std::ostream& os) const override {
+    bool finished = true;
     for (int i=0; i<e.size(); i++) {
-     os << e[i] << std::endl;
+      if (e[i].none()) finished = false;
+      os << e[i] << std::endl;
     }
+
+    if (finished) {
+      n_nodes_t           n_nodes;
+      n_edges_t           n_edges;
+      std::vector<edge_t> edges;
+
+      std::tie(n_nodes, n_edges, edges) = io::graph(io::lines(instance));
+
+      std::vector<std::vector<node_t>> adj_list(n_nodes);
+      for (int i=0; i<n_edges; i++) {
+        if (e[i].one()) {
+          node_t n1, n2;
+          std::tie(n1, n2) = edges[i];
+          adj_list[n1].push_back(n2);
+          adj_list[n2].push_back(n1);
+        }
+      }
+
+      for (int i=0; i<n_nodes; i++)
+        assert(!adj_list[i].empty());
+
+
+      auto u_nodes = utils::set_zero_to<node_t>(n_nodes);
+
+      node_t start = *u_nodes.begin();
+
+      using parent_node_t = node_t;
+      std::stack<std::pair<parent_node_t, node_t>> stack;
+      stack.emplace(start, start);
+
+      while (!stack.empty()) {
+        parent_node_t parent; node_t node;
+        std::tie(parent, node) = stack.top();
+        stack.pop();
+
+        auto n_ereased = u_nodes.erase(node);
+        assert(n_ereased == 1);
+
+        for (unsigned int adj_n : adj_list[node]) {
+          if (u_nodes.find(adj_n) != u_nodes.end()) {
+            stack.emplace(node, adj_n);
+          }
+        }
+      }
+      assert(u_nodes.empty());
+
+    }
+
   }
 };
 
@@ -326,5 +411,5 @@ main(int argc, char* argv[]) {
 
   opt.parse(argc, argv);
 
-  Script::run<SpanningTree,DFS,InstanceOptions>(opt);
+  Script::run<ConstrainedSpanningTree,DFS,InstanceOptions>(opt);
 }
