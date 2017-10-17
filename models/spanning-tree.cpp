@@ -170,8 +170,16 @@ public:
   ExecStatus propagate(Space& home, const ModEventDelta& med) override {
 
     using visit_func = std::function<ExecStatus(node_t)>;
-    using adj_func = std::function<ExecStatus(node_t,BoolView&)>;
-    auto DFS = [&](node_t start, visit_func visit, adj_func adj) {
+
+    auto for_each_adj = [&](node_t node, std::function<void(node_t,BoolView&)> f) {
+      for (int i=0; i<graph.size[node]; i++) {
+        node_t adj_node; BoolView adj_view;
+        std::tie(adj_node, adj_view) = graph.x[node][i];
+        f(adj_node, adj_view);
+      }
+    };
+
+    auto DFS = [&](node_t start, visit_func visit) {
       using parent_node_t = node_t;
       std::stack<std::pair<parent_node_t, node_t>> stack;
       stack.emplace(start, start);
@@ -181,15 +189,11 @@ public:
         stack.pop();
         auto ret = visit(node);
         if (ret != ES_OK) return ret;
-        for (int i=0; i<graph.size[node]; i++) {
-          node_t adj_node; BoolView adj_view;
-          std::tie(adj_node, adj_view) = graph.x[node][i];
+        for_each_adj(node, [&](node_t adj_node, BoolView& adj_view) {
           if (adj_view.one() && adj_node != parent_node) {
             stack.emplace(node, adj_node);
           }
-          ret = adj(adj_node, adj_view);
-          if (ret != ES_OK) return ret;
-        }
+        });
       }
     };
 
@@ -200,15 +204,13 @@ public:
       std::set<node_t> CC;
 
       // Construction of CC (connected component) without cycles
-      auto ret = DFS( *u_nodes.begin(),
+      auto ret = DFS(*u_nodes.begin(),
                       [&](node_t node) {
                         if (!CC.insert(node).second)
                           return ES_FAILED;
                         u_nodes.erase(node);
                         return ES_OK;
-                      },
-                      [](node_t,BoolView&) { return ES_OK; }
-      );
+                      });
       if (ret != ES_OK) return ret;
 
       // If there's only one node
@@ -218,16 +220,16 @@ public:
         int n_unassigned = 0;
         BoolView last_view_unassigned;
 
-        ret = DFS( *CC.begin(),
-                   [](node_t) { return ES_OK; },
-                   [&](node_t, BoolView& adj_v) {
-                     if (adj_v.none()) {
-                       n_unassigned++;
-                       last_view_unassigned = adj_v;
-                     }
+        ret = DFS(*CC.begin(),
+                   [&](node_t node) {
+                     for_each_adj(node, [&](node_t adj_n, BoolView& adj_v ) {
+                       if (adj_v.none()) {
+                         n_unassigned++;
+                         last_view_unassigned = adj_v;
+                       }
+                     });
                      return ES_OK;
-                   }
-        );
+                   });
         if (ret != ES_OK) return ret;
 
         // If there's no adjacent edges, we fail
@@ -241,13 +243,13 @@ public:
 
         // We make sure there's no unassigned edges pointing to the CC itself
         ret = DFS(*CC.begin(),
-                  [](node_t) { return ES_OK; },
-                  [&](node_t adj_n, BoolView& adj_v) {
-                    if (adj_v.none() && CC.find(adj_n) != CC.end())
-                      adj_v.eq(home, 0);
-                    return ES_OK;
-                  }
-        );
+                   [&](node_t node) {
+                     for_each_adj(node, [&](node_t adj_n, BoolView& adj_v ) {
+                       if (adj_v.none() && CC.find(adj_n) != CC.end())
+                         adj_v.eq(home, 0);
+                     });
+                     return ES_OK;
+                   });
         if (ret != ES_OK) return ret;
       }
 
@@ -257,13 +259,13 @@ public:
       if (CC.size() != graph.n_nodes) {
         unsigned int n_unassigned = 0;
         ret = DFS(*CC.begin(),
-                  [](node_t) { return ES_OK; },
-                  [&](node_t adj_n, BoolView& adj_v) {
-                    if (adj_v.none())
-                      n_unassigned += 1;
-                    return ES_OK;
-                  }
-        );
+                   [&](node_t node) {
+                     for_each_adj(node, [&](node_t adj_n, BoolView& adj_v ) {
+                       if (adj_v.none())
+                         n_unassigned += 1;
+                     });
+                     return ES_OK;
+                   });
         if (ret != ES_OK) return ret;
 
         if (n_unassigned == 0)
