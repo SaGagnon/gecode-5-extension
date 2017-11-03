@@ -276,18 +276,18 @@ public:
     return ES_FIX;
   }
 
-  void slndist(Space& home, SlnDist *dist) const override {
+  void solndistrib(Space& home, SolnDistrib *dist) const override {
   }
 
-  void slndistsize(SlnDistSize *s, unsigned int& domSum,
-              unsigned int& domSumB) const override {
-    domSum = 0;
-    domSumB = 0;
+  void solndistribsize(SolnDistribSize *s, unsigned int& domsum,
+              unsigned int& domsum_b) const override {
+    domsum = 0;
+    domsum_b = 0;
     for (int i=0; i<x.size(); i++) {
       if (!x[i].assigned()) {
-        domSum += x[i].size();
+        domsum += x[i].size();
         if (s->inbrancher(x[i].id()))
-          domSumB += x[i].size();
+          domsum_b += x[i].size();
       }
     }
   }

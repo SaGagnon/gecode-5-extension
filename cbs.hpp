@@ -40,16 +40,16 @@ private:
 
   SlnCnt slnCount{0};
   /// Sum of all domains of non assigned variable
-  size_t domSum{0};
+  size_t domsum{0};
 public:
   PropInfo() = default;
-  PropInfo(Space& home, size_t domSum0, size_t domSumB)
-    : domSum(domSum0) {
-    records.x = home.alloc<Record>(domSumB);
-    records.size = domSumB;
+  PropInfo(Space& home, size_t domsum0, size_t domsum_b)
+    : domsum(domsum0) {
+    records.x = home.alloc<Record>(domsum_b);
+    records.size = domsum_b;
   }
   PropInfo(Space& home, const PropInfo& o)
-    : domSum(o.domSum), records(o.records), slnCount(o.slnCount) {
+    : domsum(o.domsum), records(o.records), slnCount(o.slnCount) {
     records.x = home.alloc<Record>(records.size);
     memcpy(records.x, o.records.x, records.pos * sizeof(Record));
   }
@@ -61,7 +61,7 @@ public:
   Record operator[](unsigned int i) const {
     return const_cast<PropInfo*>(this)->operator[](i);
   }
-  size_t getDomSum() const { return domSum; }
+  size_t getDomSum() const { return domsum; }
   size_t getDomSumB() const { return records.size; }
   unsigned int getPosRec() const { return records.pos; }
 
@@ -131,7 +131,7 @@ class VarInBrancher : public SharedHandle {
 protected:
   class VarInBrancherO : public SharedHandle::Object {
   public:
-    class BoolArray : public SlnDistSize {
+    class BoolArray : public SolnDistribSize {
     private:
       VarId min_id{0};
       VarId max_id{0};
@@ -194,7 +194,7 @@ public:
 };
 
 template<class View>
-class CBSBrancher : public Brancher, public SlnDist {
+class CBSBrancher : public Brancher, public SolnDistrib {
 public:
   // A choice for branching
   struct Candidate {
@@ -256,13 +256,13 @@ public:
     auto& h = const_cast<Space&>(home);
     for (Propagators p(h, PropagatorGroup::all); p(); ++p) {
       // Sum of domains of all variable in propagator
-      unsigned int domSum;
+      unsigned int domsum;
       // Same, but for variables that are also in this brancher.
-      unsigned int domSumB;
-      p.propagator().slndistsize(&varInBrancher.getObject(), domSum, domSumB);
+      unsigned int domsum_b;
+      p.propagator().solndistribsize(&varInBrancher.getObject(), domsum, domsum_b);
       // If there's still a propagator that has an unassigned variable that is
       // also in the brancher, we tell our brancher has still work to do.
-      if (domSumB > 0)
+      if (domsum_b > 0)
         return true;
     }
     return false;
@@ -273,11 +273,11 @@ public:
     return true;
   }
   Type type() const override {
-    return SlnDist::ALL;
+    return SolnDistrib::ALL;
   }
   // Method used by all propagators for communicating calculated densities for
   // each of its (variable,value) pair.
-  void marginaldist(PropId prop_id, VarId var_id, Val val,
+  void marginaldistrib(PropId prop_id, VarId var_id, Val val,
                                        Dens density) override {
     assert(var_id != 0);
     if (!varpos.isIn(var_id)) return;
@@ -295,13 +295,13 @@ public:
     // We considere a propagator as "active" only if
     // - it supports slndist()
     // - it has unassigned variables that are also in the brancher
-    struct Psize { size_t domSum; size_t domSumB; };
+    struct Psize { size_t domsum; size_t domsum_b; };
     __gnu_cxx::hash_map<PropId, Psize > activeProps;
     for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
-      unsigned int domSum, domSumB;
-      p.propagator().slndistsize(&varInBrancher.getObject(), domSum, domSumB);
-      if (domSumB != 0) {
-        activeProps[p.propagator().id()] = {domSum, domSumB};
+      unsigned int domsum, domsum_b;
+      p.propagator().solndistribsize(&varInBrancher.getObject(), domsum, domsum_b);
+      if (domsum_b != 0) {
+        activeProps[p.propagator().id()] = {domsum, domsum_b};
       }
     }
 
@@ -327,16 +327,16 @@ public:
 
       if (in_log) {
         auto prop = &logProp[prop_id];
-        changed = prop->getDomSum()*recomputation_ratio > aProp->domSum;
+        changed = prop->getDomSum()*recomputation_ratio > aProp->domsum;
         if (changed)
-          prop->reuse_mem(aProp->domSumB);
+          prop->reuse_mem(aProp->domsum_b);
       } else {
         // We create a new propagator
-        logProp[prop_id] = PropInfo(home, aProp->domSum, aProp->domSumB);
+        logProp[prop_id] = PropInfo(home, aProp->domsum, aProp->domsum_b);
       }
 
       if (!in_log || changed) {
-        p.propagator().slndist(home,this);
+        p.propagator().solndistrib(home,this);
       }
     }
 
