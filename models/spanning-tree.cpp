@@ -297,6 +297,9 @@ void spanning_tree_ctr(Space& home, const BoolVarArgs& e,
                        const std::vector<edge_t>& edges,
                        n_nodes_t n_nodes) {
   ViewArray<BoolView> _e(home, e);
+
+  rel(home, sum(e) == n_nodes - 1);
+
   SpanningTreeCtr::post(home, _e, edges, n_nodes);
 }
 
@@ -349,10 +352,8 @@ public:
 
   void print(std::ostream& os) const override {
     bool finished = true;
-    for (int i=0; i<e.size(); i++) {
+    for (int i=0; i<e.size(); i++)
       if (e[i].none()) finished = false;
-      os << e[i] << std::endl;
-    }
 
     if (finished) {
       n_nodes_t           n_nodes;
@@ -362,14 +363,21 @@ public:
       std::tie(n_nodes, n_edges, edges) = io::graph(io::lines(instance));
 
       std::vector<std::vector<node_t>> adj_list(n_nodes);
-      for (int i=0; i<n_edges; i++) {
-        if (e[i].one()) {
-          node_t n1, n2;
-          std::tie(n1, n2) = edges[i];
-          adj_list[n1].push_back(n2);
-          adj_list[n2].push_back(n1);
+      {
+        n_edges_t n_edges_sol = 0;
+        for (int i = 0; i < n_edges; i++) {
+          if (e[i].one()) {
+            node_t n1, n2;
+            std::tie(n1, n2) = edges[i];
+            adj_list[n1].push_back(n2);
+            adj_list[n2].push_back(n1);
+
+            n_edges_sol++;
+          }
         }
+        assert(n_edges_sol == n_nodes - 1);
       }
+
 
       for (int i=0; i<n_nodes; i++)
         assert(!adj_list[i].empty());
@@ -392,13 +400,11 @@ public:
         assert(n_ereased == 1);
 
         for (unsigned int adj_n : adj_list[node]) {
-          if (u_nodes.find(adj_n) != u_nodes.end()) {
+          if (adj_n != parent)
             stack.emplace(node, adj_n);
-          }
         }
       }
       assert(u_nodes.empty());
-
     }
 
   }
