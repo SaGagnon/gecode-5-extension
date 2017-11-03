@@ -87,7 +87,7 @@ protected:
     node_graph_t** x; // List of adjacent nodes for each node
     unsigned int* size; // Size of adj. list for each node
     n_nodes_t n_nodes;
-  } graph;
+  } graph{nullptr, nullptr, 0};
 public:
   SpanningTreeCtr(Space& home, ViewArray<BoolView>& e,
                   const std::vector<edge_t>& edges,
@@ -283,11 +283,11 @@ public:
               unsigned int& domsum_b) const override {
     domsum = 0;
     domsum_b = 0;
-    for (int i=0; i<x.size(); i++) {
-      if (!x[i].assigned()) {
-        domsum += x[i].size();
-        if (s->inbrancher(x[i].id()))
-          domsum_b += x[i].size();
+    for (auto var : x) {
+      if (!var.assigned()) {
+        domsum += var.size();
+        if (s->inbrancher(var.id()))
+          domsum_b += var.size();
       }
     }
   }
