@@ -67,6 +67,9 @@ namespace io {
 }
 
 namespace utils {
+  /**
+   * Construct set of T from 0 to n
+   */
   template<class T>
   std::set<T> set_zero_to(unsigned int n) {
     std::set<T> not_visited;
@@ -169,42 +172,13 @@ public:
 
   ExecStatus propagate(Space& home, const ModEventDelta& med) override {
 
-    using visit_func = std::function<ExecStatus(node_t)>;
-
-    auto for_each_adj = [&](node_t node, std::function<void(node_t,BoolView&)> f) {
-      for (int i=0; i<graph.size[node]; i++) {
-        node_t adj_node; BoolView adj_view;
-        std::tie(adj_node, adj_view) = graph.x[node][i];
-        f(adj_node, adj_view);
-      }
-    };
-
-    auto DFS = [&](node_t start, visit_func visit) {
-      using parent_node_t = node_t;
-      std::stack<std::pair<parent_node_t, node_t>> stack;
-      stack.emplace(start, start);
-      while (!stack.empty()) {
-        parent_node_t parent_node; node_t node;
-        std::tie(parent_node, node) = stack.top();
-        stack.pop();
-        auto ret = visit(node);
-        if (ret != ES_OK) return ret;
-        for_each_adj(node, [&](node_t adj_node, BoolView& adj_view) {
-          if (adj_view.one() && adj_node != parent_node) {
-            stack.emplace(node, adj_node);
-          }
-        });
-      }
-    };
-
-
     // unvisited nodes
     auto u_nodes = utils::set_zero_to<node_t>(graph.n_nodes);
     while (!u_nodes.empty()) {
       std::set<node_t> CC;
 
       // Construction of CC (connected component) without cycles
-      auto ret = DFS(*u_nodes.begin(),
+      auto ret = DFS_one(*u_nodes.begin(),
                       [&](node_t node) {
                         if (!CC.insert(node).second)
                           return ES_FAILED;
@@ -220,7 +194,7 @@ public:
         int n_unassigned = 0;
         BoolView last_view_unassigned;
 
-        ret = DFS(*CC.begin(),
+        ret = DFS_one(*CC.begin(),
                    [&](node_t node) {
                      for_each_adj(node, [&](node_t adj_n, BoolView& adj_v ) {
                        if (adj_v.none()) {
@@ -242,7 +216,7 @@ public:
       } else if (CC.size() > 3) {
 
         // We make sure there's no unassigned edges pointing to the CC itself
-        ret = DFS(*CC.begin(),
+        ret = DFS_one(*CC.begin(),
                    [&](node_t node) {
                      for_each_adj(node, [&](node_t adj_n, BoolView& adj_v ) {
                        if (adj_v.none() && CC.find(adj_n) != CC.end())
@@ -258,7 +232,7 @@ public:
       // connected)
       if (CC.size() != graph.n_nodes) {
         unsigned int n_unassigned = 0;
-        ret = DFS(*CC.begin(),
+        ret = DFS_one(*CC.begin(),
                    [&](node_t node) {
                      for_each_adj(node, [&](node_t adj_n, BoolView& adj_v ) {
                        if (adj_v.none())
@@ -277,6 +251,73 @@ public:
   }
 
   void solndistrib(Space& home, SolnDistrib *dist) const override {
+
+    //
+    // TODO: On devrait construire la matrice Laplacienne en premier, en faisant
+    // TODO: attention de ne pas la mettre deux fois, PUIS la contracter.
+    //
+
+    arma::mat laplacian;
+    {
+      laplacian = arma::mat(graph.n_nodes, graph.n_nodes, arma::fill::zeros);
+
+      // unvisited nodes
+      auto u_nodes = utils::set_zero_to<node_t>(graph.n_nodes);
+
+      // master node
+      auto m_node = *u_nodes.begin();
+
+      DFS_all(m_node,
+              [&](node_t node) {
+                u_nodes.erase(node);
+                std::cout << "erase " << node << std::endl;
+                for_each_adj(node, [&](node_t adj_n, BoolView& adj_v) {
+                  // We are going to see each edge two times and we only want
+                  // to add it one time
+                  if (node < adj_n) {
+                    laplacian(node, adj_n) -= 1;
+                    laplacian(adj_n, node) -= 1;
+                    laplacian(node, node) += 1;
+                    laplacian(adj_n, adj_n) += 1;
+                  }
+                });
+                return ES_OK;
+              });
+
+      // The graph is supposed to be all connected
+      assert(u_nodes.empty());
+
+    }
+
+
+
+    // Construct Laplacian matrix
+//    arma::mat laplacian;
+//    {
+//      laplacian = arma::mat(graph.n_nodes, graph.n_nodes, arma::fill::zeros);
+//
+//      auto u_nodes = utils::set_zero_to<node_t>(graph.n_nodes);
+//      while (!u_nodes.empty()) {
+//        auto m_node = *u_nodes.begin(); // master node
+//        DFS(m_node,
+//            [&](node_t node) {
+//              for_each_adj(node, [&](node_t adj_n, BoolView& adj_v) {
+//                u_nodes.erase(node);
+//                if (adj_v.none()) {
+//                  laplacian(m_node, adj_n) -= 1;
+//                  laplacian(adj_n, m_node) -= 1;
+//                  laplacian(m_node, m_node) += 1;
+//                }
+//              });
+//              if (node != m_node)
+//                laplacian(node, node) = 1;
+//              return ES_OK;
+//            });
+//      }
+//    }
+    std::cout << laplacian << std::endl;
+    exit(-1);
+
   }
 
   void solndistribsize(SolnDistribSize *s, unsigned int& domsum,
@@ -291,6 +332,76 @@ public:
       }
     }
   }
+private:
+  void for_each_adj(node_t node,
+                    const std::function<void(node_t,BoolView&)>& f) const {
+    for (int i=0; i<graph.size[node]; i++) {
+      node_t adj_node; BoolView adj_view;
+      std::tie(adj_node, adj_view) = graph.x[node][i];
+      f(adj_node, adj_view);
+    }
+  }
+
+  /**
+   * Depth first search
+   *
+   * DFS in graph that considers only assigned edges in graph
+   *
+   * @param start starting node
+   * @param visit function to apply to each node
+   * @return
+   */
+  ExecStatus DFS_one(node_t start,
+                     const std::function<ExecStatus(node_t)>& visit) const {
+    using parent_node_t = node_t;
+    std::stack<std::pair<parent_node_t, node_t>> stack;
+    stack.emplace(start, start);
+    while (!stack.empty()) {
+      parent_node_t parent_node; node_t node;
+      std::tie(parent_node, node) = stack.top();
+      stack.pop();
+      auto ret = visit(node);
+      if (ret != ES_OK) return ret;
+      for_each_adj(node, [&](node_t adj_node, BoolView& adj_view) {
+        if (adj_view.one() && adj_node != parent_node)
+          stack.emplace(node, adj_node);
+      });
+    }
+    return ES_OK;
+  }
+
+  /**
+   * Depth first search
+   *
+   * DFS considering all assigned and unassigned edges in graph.
+   *
+   * @param start see above
+   * @param visit see above
+   * @return
+   */
+  ExecStatus DFS_all(node_t start,
+                     const std::function<ExecStatus(node_t)>& visit) const {
+    std::set<node_t> visited;
+    std::stack<node_t> stack;
+    stack.push(start);
+    while (!stack.empty()) {
+      auto node = stack.top();
+      stack.pop();
+      // If we did not already visit this node
+      if (visited.insert(node).second) {
+        auto ret = visit(node);
+        if (ret != ES_OK) return ret;
+        for_each_adj(node, [&](node_t adj_node, BoolView& adj_view) {
+          if ((adj_view.one() || adj_view.none())
+              && visited.find(adj_node) == visited.end()) {
+            stack.push(adj_node);
+          }
+        });
+      }
+    }
+    return ES_OK;
+  }
+
 };
 
 void spanning_tree_ctr(Space& home, const BoolVarArgs& e,
@@ -337,8 +448,8 @@ public:
 //      rel(*this, sum(adj_edges[i]) <= 2);
     }
 
-//    cbsbranch(*this, e,  CBSBranchingHeuristic::MAX_SD);
-    branch(*this, e, BOOL_VAR_NONE(), BOOL_VAL_MIN());
+    cbsbranch(*this, e,  CBSBranchingHeuristic::MAX_SD);
+//    branch(*this, e, BOOL_VAR_NONE(), BOOL_VAL_MIN());
   }
 
   ConstrainedSpanningTree(bool share, ConstrainedSpanningTree& s)
