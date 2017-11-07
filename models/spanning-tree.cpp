@@ -3,6 +3,7 @@
 #include <armadillo>
 
 #include <gecode/driver.hh>
+#include <unordered_map>
 
 #include "cbs.hpp"
 
@@ -178,13 +179,12 @@ public:
       std::set<node_t> CC;
 
       // Construction of CC (connected component) without cycles
-      auto ret = DFS_one(*u_nodes.begin(),
-                      [&](node_t node) {
-                        if (!CC.insert(node).second)
-                          return ES_FAILED;
-                        u_nodes.erase(node);
-                        return ES_OK;
-                      });
+      auto ret = DFS_one(*u_nodes.begin(), [&](node_t node) {
+        if (!CC.insert(node).second)
+          return ES_FAILED;
+        u_nodes.erase(node);
+        return ES_OK;
+      });
       if (ret != ES_OK) return ret;
 
       // If there's only one node
@@ -194,16 +194,15 @@ public:
         int n_unassigned = 0;
         BoolView last_view_unassigned;
 
-        ret = DFS_one(*CC.begin(),
-                   [&](node_t node) {
-                     for_each_adj(node, [&](node_t adj_n, BoolView& adj_v ) {
-                       if (adj_v.none()) {
-                         n_unassigned++;
-                         last_view_unassigned = adj_v;
-                       }
-                     });
-                     return ES_OK;
-                   });
+        ret = DFS_one(*CC.begin(), [&](node_t node) {
+          for_each_adj(node, [&](node_t adj_n, BoolView& adj_v ) {
+            if (adj_v.none()) {
+              n_unassigned++;
+              last_view_unassigned = adj_v;
+            }
+          });
+          return ES_OK;
+        });
         if (ret != ES_OK) return ret;
 
         // If there's no adjacent edges, we fail
@@ -216,14 +215,13 @@ public:
       } else if (CC.size() > 3) {
 
         // We make sure there's no unassigned edges pointing to the CC itself
-        ret = DFS_one(*CC.begin(),
-                   [&](node_t node) {
-                     for_each_adj(node, [&](node_t adj_n, BoolView& adj_v ) {
-                       if (adj_v.none() && CC.find(adj_n) != CC.end())
-                         adj_v.eq(home, 0);
-                     });
-                     return ES_OK;
-                   });
+        ret = DFS_one(*CC.begin(), [&](node_t node) {
+          for_each_adj(node, [&](node_t adj_n, BoolView& adj_v ) {
+            if (adj_v.none() && CC.find(adj_n) != CC.end())
+              adj_v.eq(home, 0);
+          });
+          return ES_OK;
+        });
         if (ret != ES_OK) return ret;
       }
 
@@ -252,71 +250,43 @@ public:
 
   void solndistrib(Space& home, SolnDistrib *dist) const override {
 
-    //
-    // TODO: On devrait construire la matrice Laplacienne en premier, en faisant
-    // TODO: attention de ne pas la mettre deux fois, PUIS la contracter.
-    //
+    // each node belong to a connected component identified by a master node
+    std::unordered_map<node_t, node_t> ncc;
+    {
+      // unvisited nodes
+      auto u_nodes = utils::set_zero_to<node_t>(graph.n_nodes);
+      while (!u_nodes.empty()) {
+        auto m_node = *u_nodes.begin();
+        DFS_one(m_node, [&](node_t node) {
+          u_nodes.erase(node);
+          ncc[node] = m_node;
+          return ES_OK;
+        });
+      }
+    }
 
     arma::mat laplacian;
     {
       laplacian = arma::mat(graph.n_nodes, graph.n_nodes, arma::fill::zeros);
-
-      // unvisited nodes
-      auto u_nodes = utils::set_zero_to<node_t>(graph.n_nodes);
-
-      // master node
-      auto m_node = *u_nodes.begin();
-
-      DFS_all(m_node,
-              [&](node_t node) {
-                u_nodes.erase(node);
-                std::cout << "erase " << node << std::endl;
-                for_each_adj(node, [&](node_t adj_n, BoolView& adj_v) {
-                  // We are going to see each edge two times and we only want
-                  // to add it one time
-                  if (node < adj_n) {
-                    laplacian(node, adj_n) -= 1;
-                    laplacian(adj_n, node) -= 1;
-                    laplacian(node, node) += 1;
-                    laplacian(adj_n, adj_n) += 1;
-                  }
-                });
-                return ES_OK;
-              });
-
-      // The graph is supposed to be all connected
-      assert(u_nodes.empty());
-
+      DFS_all(0, [&](node_t node) {
+        if (ncc[node] != node)
+          laplacian(node, node) = 1;
+        for_each_adj(node, [&](node_t adj_n, BoolView& adj_v) {
+          // We are going to see each edge two times and we only want
+          // to add it one time
+          if (adj_v.none() && node < adj_n) {
+            auto cc1 = ncc[node];
+            auto cc2 = ncc[adj_n];
+            assert(cc1 != cc2);
+            laplacian(cc1, cc2) -=1;
+            laplacian(cc2, cc1) -=1;
+            laplacian(cc1, cc1) += 1;
+            laplacian(cc2, cc2) += 1;
+          }
+        });
+        return ES_OK;
+      });
     }
-
-
-
-    // Construct Laplacian matrix
-//    arma::mat laplacian;
-//    {
-//      laplacian = arma::mat(graph.n_nodes, graph.n_nodes, arma::fill::zeros);
-//
-//      auto u_nodes = utils::set_zero_to<node_t>(graph.n_nodes);
-//      while (!u_nodes.empty()) {
-//        auto m_node = *u_nodes.begin(); // master node
-//        DFS(m_node,
-//            [&](node_t node) {
-//              for_each_adj(node, [&](node_t adj_n, BoolView& adj_v) {
-//                u_nodes.erase(node);
-//                if (adj_v.none()) {
-//                  laplacian(m_node, adj_n) -= 1;
-//                  laplacian(adj_n, m_node) -= 1;
-//                  laplacian(m_node, m_node) += 1;
-//                }
-//              });
-//              if (node != m_node)
-//                laplacian(node, node) = 1;
-//              return ES_OK;
-//            });
-//      }
-//    }
-    std::cout << laplacian << std::endl;
-    exit(-1);
 
   }
 
