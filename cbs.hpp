@@ -77,12 +77,13 @@ public:
     records.pos++;
     assert(records.size >= records.pos);
   }
-  void reuse_mem(size_t s) {
+  void reuse_mem(size_t domsum0, size_t domsum_b) {
     // We discard the previous entries by setting the count to 0 (we
     // thus reuse previous allocated memory. The number of records can't
     // grow).
     records.pos = 0;
-    records.size = s;
+    records.size = domsum_b;
+    domsum = domsum0;
   }
 };
 
@@ -329,7 +330,7 @@ public:
         auto prop = &logProp[prop_id];
         changed = prop->getDomSum()*recomputation_ratio > aProp->domsum;
         if (changed)
-          prop->reuse_mem(aProp->domsum_b);
+          prop->reuse_mem(aProp->domsum, aProp->domsum_b);
       } else {
         // We create a new propagator
         logProp[prop_id] = PropInfo(home, aProp->domsum, aProp->domsum_b);
@@ -338,6 +339,7 @@ public:
       if (!in_log || changed) {
         p.propagator().solndistrib(home,this);
       }
+
     }
 
     // We find the choice.
