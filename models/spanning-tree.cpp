@@ -251,7 +251,7 @@ public:
   void solndistrib(Space& home, SolnDistrib *dist) const override {
 
     // each node belong to a connected component identified by a master node
-    std::unordered_map<node_t, node_t> ncc;
+    std::unordered_map<node_t, unsigned int> ncc;
     {
       // unvisited nodes
       auto u_nodes = utils::set_zero_to<node_t>(graph.n_nodes);
@@ -274,6 +274,7 @@ public:
         for_each_adj(node, [&](node_t adj_n, BoolView& adj_v) {
           // We are going to see each edge two times and we only want
           // to add it one time
+          if (!adj_v.none()) return ES_OK;
           if (adj_v.none() && node < adj_n) {
             auto cc1 = ncc[node];
             auto cc2 = ncc[adj_n];
@@ -288,6 +289,65 @@ public:
       });
     }
 
+    {
+      Region r(home);
+      // Number of edges whose density is not calculated per node
+      auto *cards = r.alloc<unsigned int>(graph.n_nodes);
+      for (int jj = 0; jj < graph.n_nodes; jj++) {
+        unsigned int degree = laplacian(jj, jj);
+        if (degree == 1) { // Because of contraction
+          cards[jj] = 0;
+        } else {
+          cards[jj] = degree;
+        }
+      }
+
+      // Visited edge ids (for which we already calculated densities)
+      std::set<unsigned int> visitied_edges;
+
+      while (true) {
+        // Selected jj for inverting matrix and assigning densities
+        unsigned int jj;
+        {
+          auto nptr = std::max_element(cards, cards + graph.n_nodes);
+          if (*nptr == 0) break;
+          jj = (node_t)(nptr - cards);
+        }
+
+        arma::mat inv;
+        {
+          arma::uvec idxs(graph.n_nodes - 1);
+          for (int i=0, n=0; n<graph.n_nodes; i++, n++) {
+            if (i == jj) n++;
+            idxs[i] = n;
+          }
+          inv = arma::inv(laplacian.submat(idxs, idxs));
+        }
+
+        // We have to explore each edge in each node of the cc jj
+        for (int n=0; n<graph.n_nodes; n++) {
+          if (ncc[n] == jj) {
+            for_each_adj(n, [&](node_t adj_n, BoolView& adj_v) {
+              if (adj_v.none() && visitied_edges.find(adj_v.id()) == visitied_edges.end()) {
+                // Diagonal index for density
+                auto ii = ncc[adj_n];
+                // Because size(laplacian) > size(inv)
+                double dens;
+                if (ii > jj) dens = inv(ii-1, ii-1);
+                else         dens = inv(ii, ii);
+
+                dist->marginaldistrib(id(), adj_v.id(), 1, dens);
+                dist->marginaldistrib(id(), adj_v.id(), 0, 1-dens);
+                visitied_edges.insert(adj_v.id());
+
+                cards[jj] -= 1;
+                cards[ii] -= 1;
+              }
+            });
+          }
+        }
+      }
+    }
   }
 
   void solndistribsize(SolnDistribSize *s, unsigned int& domsum,
@@ -419,7 +479,7 @@ public:
     }
 
     cbsbranch(*this, e,  CBSBranchingHeuristic::MAX_SD);
-//    branch(*this, e, BOOL_VAR_NONE(), BOOL_VAL_MIN());
+    branch(*this, e, BOOL_VAR_NONE(), BOOL_VAL_MIN());
   }
 
   ConstrainedSpanningTree(bool share, ConstrainedSpanningTree& s)
