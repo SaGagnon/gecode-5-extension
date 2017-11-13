@@ -27,15 +27,15 @@ namespace io {
   }
 
   std::tuple<n_nodes_t, n_edges_t, std::vector<edge_t>>
-  graph(const std::vector<std::string>& lines) {
+  graph(const std::vector<std::string>& lines, bool TP = false) {
     assert(lines.size() >= 3);
     auto n_nodes = stoi(lines[0]);
     auto n_edges = stoi(lines[1]);
 
-    assert(lines.size() == 2 + n_nodes + n_edges);
+    assert(lines.size() == 2 + (TP?n_nodes:0) + n_edges);
 
     std::vector<edge_t> edges((size_t)n_edges);
-    transform(lines.begin() + 2 + n_nodes, lines.end(), edges.begin(),
+    transform(lines.begin() + 2 + (TP?n_nodes:0), lines.end(), edges.begin(),
               [](const std::string& line) {
                 int n1, n2;
                 std::stringstream(line) >> n1 >> n2;
@@ -44,27 +44,6 @@ namespace io {
 
     return std::make_tuple(n_nodes, n_edges, std::move(edges));
   };
-
-//  adj_list_t
-//  adj_list(n_nodes_t n_nodes, const std::vector<edge_t>& edges) {
-//    assert(n_nodes > 1);
-//    assert(edges.size() > 1);
-//    adj_list_t adj(n_nodes);
-//
-//    for (auto edge : edges) {
-//      node_t n1, n2;
-//      std::tie(n1, n2) = edge;
-//
-//      adj[n1].push_back(n2);
-//      adj[n2].push_back(n1);
-//    }
-//
-//    for (auto list : adj) {
-//      assert(list.size() > 0);
-//    }
-//
-//    return std::move(adj);
-//  }
 }
 
 namespace utils {
@@ -81,7 +60,7 @@ namespace utils {
 }
 
 using BoolView = Int::BoolView;
-using NaryProp = NaryPropagator<BoolView, Int::ME_INT_DOM>;
+using NaryProp = NaryPropagator<BoolView, Int::PC_BOOL_VAL>;
 
 class SpanningTreeCtr : public NaryProp {
 protected:
@@ -132,6 +111,10 @@ public:
     }
 
     iter_edge([&](BoolView& view, node_t n1, node_t n2) {
+//      if (n1 < n2) {
+//        std::cout << n1 << " " << n2 << ": " << view.id() << std::endl;
+//      }
+
       graph.x[n1][ins_pos[n1]++] = std::make_pair(n2, view);
       graph.x[n2][ins_pos[n2]++] = std::make_pair(n1, view);
     });
@@ -160,11 +143,20 @@ public:
     }
   }
 
+  virtual PropCost cost(const Space& home, const ModEventDelta& med) const {
+    return PropCost::cubic(PropCost::HI,graph.n_nodes);
+  }
+
   static ExecStatus post(Home home, ViewArray<BoolView>& e,
                          const std::vector<edge_t>& edges,
                          n_nodes_t n_nodes) {
-    (void) new (home) SpanningTreeCtr(home, e, edges, n_nodes);
-    return ES_OK;
+    auto p = new (home) SpanningTreeCtr(home, e, edges, n_nodes);
+    // The propagator is not scheduled for propagation at the beginning, so
+    // we have to do it by hands (because of type PC_BOOL_VAL). We can't change
+    // for PC_INT_DOM, as it gets automatically mapped to PC_BOOL_VAL when
+    // the propagator subscribes to its variables during creation.
+    // (see section 23.1 of doc). Value 0 of second argument is dummy.
+    return  p->propagate(home, 0);
   }
 
   Actor* copy(Space& home, bool share) override {
@@ -180,6 +172,7 @@ public:
 
       // Construction of CC (connected component) without cycles
       auto ret = DFS_one(*u_nodes.begin(), [&](node_t node) {
+        // If this fails, we have a cycle.
         if (!CC.insert(node).second)
           return ES_FAILED;
         u_nodes.erase(node);
@@ -245,11 +238,36 @@ public:
       }
     }
 
+    unsigned int n_unassigned_edges = 0;
+    unsigned int n_ones = 0;
+    unsigned int n_zeros = 0;
+    DFS_all(0, [&](node_t node) {
+      for_each_adj(node, [&](node_t adj_n, BoolView& adj_v) {
+        // We are going to see each edge two times and we only want
+        // to add it one time
+        if (node < adj_n) {
+          if (adj_v.none())
+            n_unassigned_edges += 1;
+          else {
+            if (adj_v.one())
+              n_ones += 1;
+            else {
+              n_zeros += 1;
+            }
+          }
+        }
+      });
+      return ES_OK;
+    });
+
+//    std::cout << "n_ones = " << n_ones << std::endl;
+//    std::cout << "n_zeros = " << n_zeros << std::endl;
+//    std::cout << "n_unassigned = " << n_unassigned_edges << std::endl;
+
     return ES_FIX;
   }
 
   void solndistrib(Space& home, SolnDistrib *dist) const override {
-
     // each node belong to a connected component identified by a master node
     std::unordered_map<node_t, unsigned int> ncc;
     {
@@ -264,6 +282,10 @@ public:
         });
       }
     }
+
+//    for (auto kv : ncc) {
+//      std::cout << kv.first << " in " << kv.second << std::endl;
+//    }
 
     arma::mat laplacian;
     {
@@ -288,6 +310,8 @@ public:
         return ES_OK;
       });
     }
+
+//    std::cout << laplacian << std::endl;
 
     {
       Region r(home);
@@ -457,7 +481,8 @@ public:
     n_edges_t           n_edges;
     std::vector<edge_t> edges;
 
-    std::tie(n_nodes, n_edges, edges) = io::graph(io::lines(opt.instance()));
+    std::tie(n_nodes, n_edges, edges) = io::graph(io::lines(opt.instance()),
+                                                  true);
 
     e =  BoolVarArray(*this, (int)edges.size(), 0, 1);
 
@@ -505,6 +530,7 @@ public:
 
       std::vector<std::vector<node_t>> adj_list(n_nodes);
       {
+//        std::cout << "sol: " << std::endl;
         n_edges_t n_edges_sol = 0;
         for (int i = 0; i < n_edges; i++) {
           if (e[i].one()) {
@@ -514,6 +540,7 @@ public:
             adj_list[n2].push_back(n1);
 
             n_edges_sol++;
+//            std::cout << n1 << " " << n2 << std::endl;
           }
         }
         assert(n_edges_sol == n_nodes - 1);
