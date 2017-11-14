@@ -561,15 +561,16 @@ public:
             adj_list[n2].push_back(n1);
 
             n_edges_sol++;
-//            std::cout << n1 << " " << n2 << std::endl;
+//            std::cout << n1+1 << " " << n2+1 << std::endl;
           }
         }
         assert(n_edges_sol == n_nodes - 1);
       }
 
 
-      for (int i=0; i<n_nodes; i++)
+      for (int i=0; i<n_nodes; i++) {
         assert(!adj_list[i].empty());
+      }
 
 
       auto u_nodes = utils::set_zero_to<node_t>(n_nodes);
@@ -578,7 +579,17 @@ public:
 
       using parent_node_t = node_t;
       std::stack<std::pair<parent_node_t, node_t>> stack;
+
+//      int starting_node = -1;
+//      for (int i=0; i<n_nodes; i++) {
+//        if (adj_list[i].size() == 1) {
+//          starting_node = i;
+//          break;
+//        }
+//      }
+
       stack.emplace(start, start);
+//      stack.emplace(starting_node, starting_node);
 
       while (!stack.empty()) {
         parent_node_t parent; node_t node;
@@ -587,6 +598,8 @@ public:
 
         auto n_ereased = u_nodes.erase(node);
         assert(n_ereased == 1);
+
+//        std::cout << node+1 << std::endl;
 
         for (unsigned int adj_n : adj_list[node]) {
           if (adj_n != parent)
