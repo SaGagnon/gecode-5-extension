@@ -27,7 +27,8 @@ namespace io {
   }
 
   std::tuple<n_nodes_t, n_edges_t, std::vector<edge_t>>
-  graph(const std::vector<std::string>& lines, bool TP = false) {
+  graph(const std::vector<std::string>& lines) {
+    bool TP = true;
     assert(lines.size() >= 3);
     auto n_nodes = stoi(lines[0]);
     auto n_edges = stoi(lines[1]);
@@ -114,6 +115,7 @@ public:
 //      if (n1 < n2) {
 //        std::cout << n1 << " " << n2 << ": " << view.id() << std::endl;
 //      }
+//      std::cout << std::endl;
 
       graph.x[n1][ins_pos[n1]++] = std::make_pair(n2, view);
       graph.x[n2][ins_pos[n2]++] = std::make_pair(n1, view);
@@ -164,31 +166,36 @@ public:
   }
 
   ExecStatus propagate(Space& home, const ModEventDelta& med) override {
+    if (x.assigned()) {
+      return home.ES_SUBSUMED(*this);
+    }
 
     // unvisited nodes
     auto u_nodes = utils::set_zero_to<node_t>(graph.n_nodes);
-    while (!u_nodes.empty()) {
-      std::set<node_t> CC;
 
-      // Construction of CC (connected component) without cycles
-      auto ret = DFS_one(*u_nodes.begin(), [&](node_t node) {
-        // If this fails, we have a cycle.
-        if (!CC.insert(node).second)
-          return ES_FAILED;
-        u_nodes.erase(node);
-        return ES_OK;
-      });
-      if (ret != ES_OK) return ret;
+    // See comment before first redo_propagation = true
+    bool redo_propagation = false;
+    do {
+      redo_propagation = false;
+      while (!u_nodes.empty()) {
+        std::set<node_t> CC;
 
-      // If there's only one node
-      if (CC.size() == 1) {
+        // Construction of CC (connected component) without cycles
+        auto ret = DFS_one(*u_nodes.begin(), [&](node_t node) {
+          // If this fails, we have a cycle.
+          if (!CC.insert(node).second)
+            return ES_FAILED;
+          u_nodes.erase(node);
+          return ES_OK;
+        });
+        if (ret != ES_OK) return ret;
 
-        // Number of adjacent unassigned edges
+        // Number of adjacent unassigned edges for the cc
         int n_unassigned = 0;
         BoolView last_view_unassigned;
 
         ret = DFS_one(*CC.begin(), [&](node_t node) {
-          for_each_adj(node, [&](node_t adj_n, BoolView& adj_v ) {
+          for_each_adj(node, [&](node_t adj_n, BoolView& adj_v) {
             if (adj_v.none()) {
               n_unassigned++;
               last_view_unassigned = adj_v;
@@ -202,67 +209,79 @@ public:
         if (n_unassigned == 0)
           return ES_FAILED;
         // If there's only one, we are obliged to take it
-        if (n_unassigned == 1)
+        if (n_unassigned == 1) {
           last_view_unassigned.eq(home, 1);
+          // If we fix a variable, we have to redo the propagation process;
+          // CCs might change and trigger other changes. This is dirty and
+          // probably very inneficient. However, I'm only interested in getting
+          // propagation to work correctly right now. I'm sure it can be
+          // optimized.
+          redo_propagation = true;
+        }
 
-      } else if (CC.size() > 3) {
+        if (CC.size() > 3) {
 
-        // We make sure there's no unassigned edges pointing to the CC itself
-        ret = DFS_one(*CC.begin(), [&](node_t node) {
-          for_each_adj(node, [&](node_t adj_n, BoolView& adj_v ) {
-            if (adj_v.none() && CC.find(adj_n) != CC.end())
-              adj_v.eq(home, 0);
+          // We make sure there's no unassigned edges pointing to the CC itself
+          ret = DFS_one(*CC.begin(), [&](node_t node) {
+            for_each_adj(node, [&](node_t adj_n, BoolView& adj_v) {
+              if (adj_v.none() && CC.find(adj_n) != CC.end()) {
+                adj_v.eq(home, 0);
+                // See previous comment before last "redo_propagation = true"
+                redo_propagation = true;
+              }
+            });
+            return ES_OK;
           });
-          return ES_OK;
-        });
-        if (ret != ES_OK) return ret;
+          if (ret != ES_OK) return ret;
+        }
+
+        // If the connected component does not contain the whole graph, it must
+        // at least include an unassigned edge (for the whole graph to be
+        // connected)
+        if (CC.size() != graph.n_nodes) {
+          unsigned int n_unassigned = 0;
+          ret = DFS_one(*CC.begin(),
+                        [&](node_t node) {
+                          for_each_adj(node,
+                                       [&](node_t adj_n, BoolView& adj_v) {
+                                         if (adj_v.none())
+                                           n_unassigned += 1;
+                                       });
+                          return ES_OK;
+                        });
+          if (ret != ES_OK) return ret;
+
+          if (n_unassigned == 0)
+            return ES_FAILED;
+        }
       }
 
-      // If the connected component does not contain the whole graph, it must
-      // at least include an unassigned edge (for the whole graph to be
-      // connected)
-      if (CC.size() != graph.n_nodes) {
-        unsigned int n_unassigned = 0;
-        ret = DFS_one(*CC.begin(),
-                   [&](node_t node) {
-                     for_each_adj(node, [&](node_t adj_n, BoolView& adj_v ) {
-                       if (adj_v.none())
-                         n_unassigned += 1;
-                     });
-                     return ES_OK;
-                   });
-        if (ret != ES_OK) return ret;
-
-        if (n_unassigned == 0)
-          return ES_FAILED;
-      }
-    }
-
-    unsigned int n_unassigned_edges = 0;
-    unsigned int n_ones = 0;
-    unsigned int n_zeros = 0;
-    DFS_all(0, [&](node_t node) {
-      for_each_adj(node, [&](node_t adj_n, BoolView& adj_v) {
-        // We are going to see each edge two times and we only want
-        // to add it one time
-        if (node < adj_n) {
-          if (adj_v.none())
-            n_unassigned_edges += 1;
-          else {
-            if (adj_v.one())
-              n_ones += 1;
+      unsigned int n_unassigned_edges = 0;
+      unsigned int n_ones = 0;
+      unsigned int n_zeros = 0;
+      DFS_all(0, [&](node_t node) {
+        for_each_adj(node, [&](node_t adj_n, BoolView& adj_v) {
+          // We are going to see each edge two times and we only want
+          // to add it one time
+          if (node < adj_n) {
+            if (adj_v.none())
+              n_unassigned_edges += 1;
             else {
-              n_zeros += 1;
+              if (adj_v.one())
+                n_ones += 1;
+              else {
+                n_zeros += 1;
+              }
             }
           }
-        }
+        });
+        return ES_OK;
       });
-      return ES_OK;
-    });
 
-//    std::cout << "n_ones = " << n_ones << std::endl;
-//    std::cout << "n_zeros = " << n_zeros << std::endl;
-//    std::cout << "n_unassigned = " << n_unassigned_edges << std::endl;
+//      std::cout << "n_ones = " << n_ones << std::endl;
+//      std::cout << "n_zeros = " << n_zeros << std::endl;
+//      std::cout << "n_unassigned = " << n_unassigned_edges << std::endl;
+    } while (redo_propagation);
 
     return ES_FIX;
   }
@@ -286,6 +305,7 @@ public:
 //    for (auto kv : ncc) {
 //      std::cout << kv.first << " in " << kv.second << std::endl;
 //    }
+//    std::cout<<std::endl;
 
     arma::mat laplacian;
     {
@@ -340,11 +360,13 @@ public:
 
         arma::mat inv;
         {
-          arma::uvec idxs(graph.n_nodes - 1);
-          for (int i=0, n=0; n<graph.n_nodes; i++, n++) {
+          arma::uvec idxs(graph.n_nodes-1);
+          int n = 0;
+          for (int i=0; i<graph.n_nodes-1; i++) {
             if (i == jj) n++;
-            idxs[i] = n;
+            idxs[i] = n++;
           }
+
           inv = arma::inv(laplacian.submat(idxs, idxs));
         }
 
@@ -481,8 +503,7 @@ public:
     n_edges_t           n_edges;
     std::vector<edge_t> edges;
 
-    std::tie(n_nodes, n_edges, edges) = io::graph(io::lines(opt.instance()),
-                                                  true);
+    std::tie(n_nodes, n_edges, edges) = io::graph(io::lines(opt.instance()));
 
     e =  BoolVarArray(*this, (int)edges.size(), 0, 1);
 
@@ -500,7 +521,7 @@ public:
 
     for (int i=0; i<n_nodes; i++) {
       assert(adj_edges[i].size() != 0);
-//      rel(*this, sum(adj_edges[i]) <= 2);
+      rel(*this, sum(adj_edges[i]) <= 2);
     }
 
     cbsbranch(*this, e,  CBSBranchingHeuristic::MAX_SD);
@@ -584,7 +605,7 @@ main(int argc, char* argv[]) {
   opt.ipl(IPL_DOM);
   opt.solutions(1);
 //  opt.mode(SM_GIST);
-
+//
   opt.parse(argc, argv);
 
   Script::run<ConstrainedSpanningTree,DFS,InstanceOptions>(opt);
