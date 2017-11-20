@@ -15,51 +15,6 @@ using edge_t      = std::pair<node_t, node_t>;
 using n_nodes_t   = unsigned int;
 using n_edges_t   = unsigned int;
 
-
-double ___TOT_ECART_DENS = 0;
-double ___TOT_DENS = 0;
-unsigned int ___NB_DENS_CALC = 0;
-
-//using adj_list_t  = std::vector<std::vector<node_t>>;
-
-namespace test {
-  int f(arma::mat A, int i) {
-    const auto n = A.n_cols;
-    int _sum = 0;
-    for (int k=0; k<n; k++) {
-      if (k != i) {
-        for (int l=0; l<n; l++) {
-          if (l != i) {
-            _sum += A(k,i)*A(k,l)*A(l,i);
-          }
-        }
-      }
-    }
-    return _sum;
-  }
-
-  int g(arma::mat A, int i) {
-    const auto n = A.n_cols;
-    int _sum = 0;
-    for (int k=0; k<n; k++) {
-      if (k != i) {
-        _sum += std::pow(A(k,i), 2);
-      }
-    }
-    return _sum;
-  }
-
-  double approx(arma::mat A, int i) {
-    auto _f = f(A,i);
-//    std::cout << "--" << std::endl;
-//    std::cout << (double)_f/(A(i,i)*_f - std::pow(g(A,i), 2)) << std::endl;
-//    std::cout << "_f= " << _f << std::endl;
-//    std::cout << "A(i,i)= " << A(i,i) << std::endl;
-//    std::cout << "g= " << g(A,i) << std::endl;
-    return (double)_f/(A(i,i)*_f - std::pow(g(A,i), 2));
-  }
-}
-
 namespace io {
   std::vector<std::string> lines(const std::string& file) {
     std::vector<std::string> lines;
@@ -155,11 +110,6 @@ public:
     }
 
     iter_edge([&](BoolView& view, node_t n1, node_t n2) {
-//      if (n1 < n2) {
-//        std::cout << n1 << " " << n2 << ": " << view.id() << std::endl;
-//      }
-//      std::cout << std::endl;
-
       graph.x[n1][ins_pos[n1]++] = std::make_pair(n2, view);
       graph.x[n2][ins_pos[n2]++] = std::make_pair(n1, view);
     });
@@ -224,127 +174,67 @@ public:
       }
     }
 
-    // See comment before first redo_propagation = true
-/*    bool redo_propagation = false;
-    do {
-      redo_propagation = false;*/
-      // unvisited nodes
-      auto u_nodes = utils::set_zero_to<node_t>(graph.n_nodes);
-      while (!u_nodes.empty()) {
-        std::set<node_t> CC;
+    // unvisited nodes
+    auto u_nodes = utils::set_zero_to<node_t>(graph.n_nodes);
+    while (!u_nodes.empty()) {
+      std::set<node_t> CC;
 
-        // Construction of CC (connected component) without cycles
-        auto ret = DFS_one(*u_nodes.begin(), [&](node_t node) {
-          // If this fails, we have a cycle.
-          if (!CC.insert(node).second)
-            return ES_FAILED;
-          u_nodes.erase(node);
-          return ES_OK;
-        });
-        if (ret != ES_OK) return ret;
-
-//        std::cout << std::endl << "CC = ";
-//        for (auto e : CC) {
-//          std::cout << e << " ";
-//        }
-//        std::cout << std::endl;
-
-        // Number of adjacent unassigned edges for the cc
-        int n_unassigned = 0;
-        BoolView last_view_unassigned;
-
-        ret = DFS_one(*CC.begin(), [&](node_t node) {
-          for_each_adj(node, [&](node_t adj_n, BoolView& adj_v) {
-            if (adj_v.none()) {
-//              std::cout << "u(" << node << "," << adj_n << ") ";
-              n_unassigned++;
-              last_view_unassigned = adj_v;
-            }
-          });
-          return ES_OK;
-        });
-        if (ret != ES_OK) return ret;
-
-        // If there's no adjacent edges, we fail
-        if (n_unassigned == 0 && CC.size() != graph.n_nodes)
+      // Construction of CC (connected component) without cycles
+      auto ret = DFS_one(*u_nodes.begin(), [&](node_t node) {
+        // If this fails, we have a cycle.
+        if (!CC.insert(node).second)
           return ES_FAILED;
-        // If there's only one, we are obliged to take it
-        if (n_unassigned == 1) {
-          last_view_unassigned.eq(home, 1);
-          // If we fix a variable, we have to redo the propagation process;
-          // CCs might change and trigger other changes. This is dirty and
-          // probably very inneficient. However, I'm only interested in getting
-          // propagation to work correctly right now. I'm sure it can be
-          // optimized.
-//          redo_propagation = true;
-          return ES_NOFIX;
-        }
+        u_nodes.erase(node);
+        return ES_OK;
+      });
+      if (ret != ES_OK) return ret;
 
-        if (CC.size() >= 3) {
-          // We make sure there's no unassigned edges pointing to the CC itself
-          ret = DFS_one(*CC.begin(), [&](node_t node) {
-            for_each_adj(node, [&](node_t adj_n, BoolView& adj_v) {
-              if (adj_v.none() && CC.find(adj_n) != CC.end()) {
-                adj_v.eq(home, 0);
-                // See previous comment before last "redo_propagation = true"
-//                redo_propagation = true;
-                return ES_NOFIX;
-              }
-            });
-            return ES_OK;
-          });
-          if (ret != ES_OK) return ret;
-        }
+      // Number of adjacent unassigned edges for the cc
+      int n_unassigned = 0;
+      BoolView last_view_unassigned;
 
-//        // If the connected component does not contain the whole graph, it must
-//        // at least include an unassigned edge (for the whole graph to be
-//        // connected)
-//        if (CC.size() != graph.n_nodes) {
-//          unsigned int n_unassigned = 0;
-//          ret = DFS_one(*CC.begin(),
-//                        [&](node_t node) {
-//                          for_each_adj(node,
-//                                       [&](node_t adj_n, BoolView& adj_v) {
-//                                         if (adj_v.none())
-//                                           n_unassigned += 1;
-//                                       });
-//                          return ES_OK;
-//                        });
-//          if (ret != ES_OK) return ret;
-//
-//          if (n_unassigned == 0)
-//            return ES_FAILED;
-//        }
-      }
-
-      unsigned int n_unassigned_edges = 0;
-      unsigned int n_ones = 0;
-      unsigned int n_zeros = 0;
-      DFS_all(0, [&](node_t node) {
+      ret = DFS_one(*CC.begin(), [&](node_t node) {
         for_each_adj(node, [&](node_t adj_n, BoolView& adj_v) {
-          // We are going to see each edge two times and we only want
-          // to add it one time
-          if (node < adj_n) {
-            if (adj_v.none())
-              n_unassigned_edges += 1;
-            else {
-              if (adj_v.one())
-                n_ones += 1;
-              else {
-                n_zeros += 1;
-              }
-            }
+          if (adj_v.none()) {
+            n_unassigned++;
+            last_view_unassigned = adj_v;
           }
         });
         return ES_OK;
       });
+      if (ret != ES_OK) return ret;
 
-//      std::cout << std::endl << "propagate: " << std::endl;
-//      std::cout << "n_ones = " << n_ones << std::endl;
-//      std::cout << "n_zeros = " << n_zeros << std::endl;
-//      std::cout << "n_unassigned = " << n_unassigned_edges << std::endl;
-//      std::cout << std::endl;
-//    } while (redo_propagation);
+      // If there's no adjacent edges, we fail
+      if (n_unassigned == 0 && CC.size() != graph.n_nodes)
+        return ES_FAILED;
+      // If there's only one, we are obliged to take it
+      if (n_unassigned == 1) {
+        last_view_unassigned.eq(home, 1);
+        // If we fix a variable, we have to redo the propagation process;
+        // CCs might change and trigger other changes. This is dirty and
+        // probably very inneficient. However, I'm only interested in getting
+        // propagation to work correctly right now. I'm sure it can be
+        // optimized.
+        return ES_NOFIX;
+      }
+
+      if (CC.size() >= 3) {
+        // We make sure there's no unassigned edges pointing to the CC itself
+        ret = DFS_one(*CC.begin(), [&](node_t node) {
+          for_each_adj(node, [&](node_t adj_n, BoolView& adj_v) {
+            if (adj_v.none() && CC.find(adj_n) != CC.end()) {
+              adj_v.eq(home, 0);
+              // See previous comment before last "redo_propagation = true"
+//                redo_propagation = true;
+              return ES_NOFIX;
+            }
+          });
+          return ES_OK;
+        });
+        if (ret != ES_OK) return ret;
+      }
+
+    }
 
     if (x.assigned()) {
       return home.ES_SUBSUMED(*this);
@@ -368,11 +258,6 @@ public:
       }
     }
 
-//    for (auto kv : ncc) {
-//      std::cout << kv.first << " in " << kv.second << std::endl;
-//    }
-//    std::cout<<std::endl;
-
     arma::mat laplacian;
     {
       std::set<int> ___seen_nodes;
@@ -390,30 +275,17 @@ public:
             auto cc1 = ncc[node];
             auto cc2 = ncc[adj_n];
             assert(cc1 != cc2);
-            laplacian(cc1, cc2) -=1;
-            laplacian(cc2, cc1) -=1;
+            laplacian(cc1, cc2) -= 1;
+            laplacian(cc2, cc1) -= 1;
             laplacian(cc1, cc1) += 1;
             laplacian(cc2, cc2) += 1;
           }
         });
         return ES_OK;
       });
-//      std::cout << std::endl << "solndistrib not seen: ";
-      for (int i=0; i<graph.n_nodes; i++) {
-        if (___seen_nodes.find(i) == ___seen_nodes.end()) {
-//          std::cout << i << " ";
-        }
-      }
-//      std::cout << std::endl;
-      assert(___seen_nodes.size() == graph.n_nodes);
     }
 
-//    std::cout << laplacian << std::endl;
-
     const bool INVERSION_APPROX = true;
-
-
-    std::unordered_map<node_t,double> ___REAL_ONES_DENS;
 
     auto get_idxs = [&](unsigned int _jj) {
       arma::uvec idxs(graph.n_nodes - 1);
@@ -425,8 +297,7 @@ public:
       return idxs;
     };
 
-//    if (!INVERSION_APPROX) {
-    { // TMP TMP
+    if (!INVERSION_APPROX) {
       Region r(home);
       // Number of edges whose density is not calculated per node
       auto *cards = r.alloc<unsigned int>(graph.n_nodes);
@@ -470,10 +341,9 @@ public:
                 if (ii > jj) dens = inv(ii - 1, ii - 1);
                 else dens = inv(ii, ii);
 
-//                dist->marginaldistrib(id(), adj_v.id(), 1, dens);
-//                dist->marginaldistrib(id(), adj_v.id(), 0, 1 - dens);
+                dist->marginaldistrib(id(), adj_v.id(), 1, dens);
+                dist->marginaldistrib(id(), adj_v.id(), 0, 1 - dens);
                 visitied_edges.insert(adj_v.id());
-                ___REAL_ONES_DENS[adj_v.id()] = dens;
 
                 cards[jj] -= 1;
                 cards[ii] -= 1;
@@ -483,8 +353,7 @@ public:
         }
       }
 
-    } // TMP TMP
-//    } else {
+    } else {
 
       const int n = graph.n_nodes;
 
@@ -542,25 +411,8 @@ public:
               double dens;
               if (A == 0)
                 dens = 1 / laplacian(ii,ii);
-              else {
+              else
                 dens = (double) A / (laplacian(ii, ii) * A - std::pow(B, 2));
-
-                auto idxs = get_idxs(jj);
-                auto submat = laplacian.submat(idxs, idxs);
-                auto dens_no_fast = test::approx(submat, ii-1);
-                assert(std::abs(dens_no_fast-dens) < 0.0001);
-
-              }
-
-              ___TOT_ECART_DENS += ___REAL_ONES_DENS[adj_v.id()] - dens;
-              ___TOT_DENS += ___REAL_ONES_DENS[adj_v.id()];
-              ___NB_DENS_CALC += 1;
-
-
-              if (dens > ___REAL_ONES_DENS[adj_v.id()] + 0.001) {
-                std::cout << dens << " <= " <<  ___REAL_ONES_DENS[adj_v.id()] << std::endl;
-                assert(false);
-              }
 
               dist->marginaldistrib(id(), adj_v.id(), 1, dens);
               dist->marginaldistrib(id(), adj_v.id(), 0, 1 - dens);
@@ -570,7 +422,7 @@ public:
         return ES_OK;
       });
 
-//    }
+    }
   }
 
   void solndistribsize(SolnDistribSize *s, unsigned int& domsum,
@@ -702,7 +554,7 @@ public:
     }
 
     cbsbranch(*this, e,  CBSBranchingHeuristic::MAX_SD);
-//    branch(*this, e, BOOL_VAR_NONE(), BOOL_VAL_MIN());
+    branch(*this, e, BOOL_VAR_NONE(), BOOL_VAL_MIN());
   }
 
   ConstrainedSpanningTree(bool share, ConstrainedSpanningTree& s)
@@ -713,84 +565,6 @@ public:
   Space* copy(bool share) override {
     return new ConstrainedSpanningTree(share,*this);
   }
-
-  void print(std::ostream& os) const override {
-    bool finished = true;
-    for (int i=0; i<e.size(); i++)
-      if (e[i].none()) finished = false;
-
-    if (finished) {
-
-      std::cout << "ecart moy: " << ___TOT_ECART_DENS / (double)___NB_DENS_CALC << std::endl;
-      std::cout << "dens moy: " << ___TOT_DENS / (double)___NB_DENS_CALC << std::endl;
-
-      n_nodes_t           n_nodes;
-      n_edges_t           n_edges;
-      std::vector<edge_t> edges;
-
-      std::tie(n_nodes, n_edges, edges) = io::graph(io::lines(instance));
-
-      std::vector<std::vector<node_t>> adj_list(n_nodes);
-      {
-//        std::cout << "sol: " << std::endl;
-        n_edges_t n_edges_sol = 0;
-        for (int i = 0; i < n_edges; i++) {
-          if (e[i].one()) {
-            node_t n1, n2;
-            std::tie(n1, n2) = edges[i];
-            adj_list[n1].push_back(n2);
-            adj_list[n2].push_back(n1);
-
-            n_edges_sol++;
-//            std::cout << n1+1 << " " << n2+1 << std::endl;
-          }
-        }
-        assert(n_edges_sol == n_nodes - 1);
-      }
-
-
-      for (int i=0; i<n_nodes; i++) {
-        assert(!adj_list[i].empty());
-      }
-
-
-      auto u_nodes = utils::set_zero_to<node_t>(n_nodes);
-
-      node_t start = *u_nodes.begin();
-
-      using parent_node_t = node_t;
-      std::stack<std::pair<parent_node_t, node_t>> stack;
-
-//      int starting_node = -1;
-//      for (int i=0; i<n_nodes; i++) {
-//        if (adj_list[i].size() == 1) {
-//          starting_node = i;
-//          break;
-//        }
-//      }
-
-      stack.emplace(start, start);
-//      stack.emplace(starting_node, starting_node);
-
-      while (!stack.empty()) {
-        parent_node_t parent; node_t node;
-        std::tie(parent, node) = stack.top();
-        stack.pop();
-
-        auto n_ereased = u_nodes.erase(node);
-        assert(n_ereased == 1);
-
-//        std::cout << node+1 << std::endl;
-
-        for (unsigned int adj_n : adj_list[node]) {
-          if (adj_n != parent)
-            stack.emplace(node, adj_n);
-        }
-      }
-      assert(u_nodes.empty());
-    }
-
-  }
 };
 
 int
@@ -799,7 +573,6 @@ main(int argc, char* argv[]) {
   opt.ipl(IPL_DOM);
   opt.solutions(1);
 //  opt.mode(SM_GIST);
-//
   opt.parse(argc, argv);
 
   Script::run<ConstrainedSpanningTree,DFS,InstanceOptions>(opt);
