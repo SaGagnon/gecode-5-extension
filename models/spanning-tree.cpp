@@ -22,6 +22,44 @@ unsigned int ___NB_DENS_CALC = 0;
 
 //using adj_list_t  = std::vector<std::vector<node_t>>;
 
+namespace test {
+  int f(arma::mat A, int i) {
+    const auto n = A.n_cols;
+    int _sum = 0;
+    for (int k=0; k<n; k++) {
+      if (k != i) {
+        for (int l=0; l<n; l++) {
+          if (l != i) {
+            _sum += A(k,i)*A(k,l)*A(l,i);
+          }
+        }
+      }
+    }
+    return _sum;
+  }
+
+  int g(arma::mat A, int i) {
+    const auto n = A.n_cols;
+    int _sum = 0;
+    for (int k=0; k<n; k++) {
+      if (k != i) {
+        _sum += std::pow(A(k,i), 2);
+      }
+    }
+    return _sum;
+  }
+
+  double approx(arma::mat A, int i) {
+    auto _f = f(A,i);
+//    std::cout << "--" << std::endl;
+//    std::cout << (double)_f/(A(i,i)*_f - std::pow(g(A,i), 2)) << std::endl;
+//    std::cout << "_f= " << _f << std::endl;
+//    std::cout << "A(i,i)= " << A(i,i) << std::endl;
+//    std::cout << "g= " << g(A,i) << std::endl;
+    return (double)_f/(A(i,i)*_f - std::pow(g(A,i), 2));
+  }
+}
+
 namespace io {
   std::vector<std::string> lines(const std::string& file) {
     std::vector<std::string> lines;
@@ -377,6 +415,15 @@ public:
 
     std::unordered_map<node_t,double> ___REAL_ONES_DENS;
 
+    auto get_idxs = [&](unsigned int _jj) {
+      arma::uvec idxs(graph.n_nodes - 1);
+      int n = 0;
+      for (int i = 0; i < graph.n_nodes - 1; i++) {
+        if (i == _jj) n++;
+        idxs[i] = n++;
+      }
+      return idxs;
+    };
 
 //    if (!INVERSION_APPROX) {
     { // TMP TMP
@@ -406,13 +453,7 @@ public:
 
         arma::mat inv;
         {
-          arma::uvec idxs(graph.n_nodes - 1);
-          int n = 0;
-          for (int i = 0; i < graph.n_nodes - 1; i++) {
-            if (i == jj) n++;
-            idxs[i] = n++;
-          }
-
+          auto idxs = get_idxs(jj);
           inv = arma::inv_sympd(laplacian.submat(idxs, idxs));
         }
 
@@ -501,8 +542,15 @@ public:
               double dens;
               if (A == 0)
                 dens = 1 / laplacian(ii,ii);
-              else
+              else {
                 dens = (double) A / (laplacian(ii, ii) * A - std::pow(B, 2));
+
+                auto idxs = get_idxs(jj);
+                auto submat = laplacian.submat(idxs, idxs);
+                auto dens_no_fast = test::approx(submat, ii-1);
+                assert(std::abs(dens_no_fast-dens) < 0.0001);
+
+              }
 
               ___TOT_ECART_DENS += ___REAL_ONES_DENS[adj_v.id()] - dens;
               ___TOT_DENS += ___REAL_ONES_DENS[adj_v.id()];
