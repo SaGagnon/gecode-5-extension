@@ -72,7 +72,7 @@ public:
   }
   void insert_record(const Record&& r) {
     assert(records.x != nullptr);
-    assert(r.dens>0 && r.dens<1);
+//    assert(r.dens>0 && r.dens<1);
     records.x[records.pos] = r;
     records.pos++;
     assert(records.size >= records.pos);

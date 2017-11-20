@@ -15,6 +15,11 @@ using edge_t      = std::pair<node_t, node_t>;
 using n_nodes_t   = unsigned int;
 using n_edges_t   = unsigned int;
 
+
+double ___TOT_ECART_DENS = 0;
+double ___TOT_DENS = 0;
+unsigned int ___NB_DENS_CALC = 0;
+
 //using adj_list_t  = std::vector<std::vector<node_t>>;
 
 namespace io {
@@ -28,7 +33,7 @@ namespace io {
 
   std::tuple<n_nodes_t, n_edges_t, std::vector<edge_t>>
   graph(const std::vector<std::string>& lines) {
-    bool TP = true;
+    const bool TP = false;
     assert(lines.size() >= 3);
     auto n_nodes = stoi(lines[0]);
     auto n_edges = stoi(lines[1]);
@@ -166,17 +171,27 @@ public:
   }
 
   ExecStatus propagate(Space& home, const ModEventDelta& med) override {
-    if (x.assigned()) {
-      return home.ES_SUBSUMED(*this);
+
+    // First, all nodes must be accessible via unnassigned edges and
+    // edges equal to one. If this is not the case, we can't have
+    // a connected graph
+    {
+      std::set<node_t> seen_nodes;
+      DFS_all(0, [&](node_t node) {
+        seen_nodes.insert(node);
+        return ES_OK;
+      });
+      if (seen_nodes.size() != graph.n_nodes) {
+        return ES_FAILED;
+      }
     }
 
-    // unvisited nodes
-    auto u_nodes = utils::set_zero_to<node_t>(graph.n_nodes);
-
     // See comment before first redo_propagation = true
-    bool redo_propagation = false;
+/*    bool redo_propagation = false;
     do {
-      redo_propagation = false;
+      redo_propagation = false;*/
+      // unvisited nodes
+      auto u_nodes = utils::set_zero_to<node_t>(graph.n_nodes);
       while (!u_nodes.empty()) {
         std::set<node_t> CC;
 
@@ -190,6 +205,12 @@ public:
         });
         if (ret != ES_OK) return ret;
 
+//        std::cout << std::endl << "CC = ";
+//        for (auto e : CC) {
+//          std::cout << e << " ";
+//        }
+//        std::cout << std::endl;
+
         // Number of adjacent unassigned edges for the cc
         int n_unassigned = 0;
         BoolView last_view_unassigned;
@@ -197,6 +218,7 @@ public:
         ret = DFS_one(*CC.begin(), [&](node_t node) {
           for_each_adj(node, [&](node_t adj_n, BoolView& adj_v) {
             if (adj_v.none()) {
+//              std::cout << "u(" << node << "," << adj_n << ") ";
               n_unassigned++;
               last_view_unassigned = adj_v;
             }
@@ -206,7 +228,7 @@ public:
         if (ret != ES_OK) return ret;
 
         // If there's no adjacent edges, we fail
-        if (n_unassigned == 0)
+        if (n_unassigned == 0 && CC.size() != graph.n_nodes)
           return ES_FAILED;
         // If there's only one, we are obliged to take it
         if (n_unassigned == 1) {
@@ -216,18 +238,19 @@ public:
           // probably very inneficient. However, I'm only interested in getting
           // propagation to work correctly right now. I'm sure it can be
           // optimized.
-          redo_propagation = true;
+//          redo_propagation = true;
+          return ES_NOFIX;
         }
 
-        if (CC.size() > 3) {
-
+        if (CC.size() >= 3) {
           // We make sure there's no unassigned edges pointing to the CC itself
           ret = DFS_one(*CC.begin(), [&](node_t node) {
             for_each_adj(node, [&](node_t adj_n, BoolView& adj_v) {
               if (adj_v.none() && CC.find(adj_n) != CC.end()) {
                 adj_v.eq(home, 0);
                 // See previous comment before last "redo_propagation = true"
-                redo_propagation = true;
+//                redo_propagation = true;
+                return ES_NOFIX;
               }
             });
             return ES_OK;
@@ -235,25 +258,25 @@ public:
           if (ret != ES_OK) return ret;
         }
 
-        // If the connected component does not contain the whole graph, it must
-        // at least include an unassigned edge (for the whole graph to be
-        // connected)
-        if (CC.size() != graph.n_nodes) {
-          unsigned int n_unassigned = 0;
-          ret = DFS_one(*CC.begin(),
-                        [&](node_t node) {
-                          for_each_adj(node,
-                                       [&](node_t adj_n, BoolView& adj_v) {
-                                         if (adj_v.none())
-                                           n_unassigned += 1;
-                                       });
-                          return ES_OK;
-                        });
-          if (ret != ES_OK) return ret;
-
-          if (n_unassigned == 0)
-            return ES_FAILED;
-        }
+//        // If the connected component does not contain the whole graph, it must
+//        // at least include an unassigned edge (for the whole graph to be
+//        // connected)
+//        if (CC.size() != graph.n_nodes) {
+//          unsigned int n_unassigned = 0;
+//          ret = DFS_one(*CC.begin(),
+//                        [&](node_t node) {
+//                          for_each_adj(node,
+//                                       [&](node_t adj_n, BoolView& adj_v) {
+//                                         if (adj_v.none())
+//                                           n_unassigned += 1;
+//                                       });
+//                          return ES_OK;
+//                        });
+//          if (ret != ES_OK) return ret;
+//
+//          if (n_unassigned == 0)
+//            return ES_FAILED;
+//        }
       }
 
       unsigned int n_unassigned_edges = 0;
@@ -278,11 +301,16 @@ public:
         return ES_OK;
       });
 
+//      std::cout << std::endl << "propagate: " << std::endl;
 //      std::cout << "n_ones = " << n_ones << std::endl;
 //      std::cout << "n_zeros = " << n_zeros << std::endl;
 //      std::cout << "n_unassigned = " << n_unassigned_edges << std::endl;
-    } while (redo_propagation);
+//      std::cout << std::endl;
+//    } while (redo_propagation);
 
+    if (x.assigned()) {
+      return home.ES_SUBSUMED(*this);
+    }
     return ES_FIX;
   }
 
@@ -309,8 +337,11 @@ public:
 
     arma::mat laplacian;
     {
+      std::set<int> ___seen_nodes;
       laplacian = arma::mat(graph.n_nodes, graph.n_nodes, arma::fill::zeros);
       DFS_all(0, [&](node_t node) {
+        assert(___seen_nodes.find(node) == ___seen_nodes.end());
+        ___seen_nodes.insert(node);
         if (ncc[node] != node)
           laplacian(node, node) = 1;
         for_each_adj(node, [&](node_t adj_n, BoolView& adj_v) {
@@ -329,11 +360,26 @@ public:
         });
         return ES_OK;
       });
+//      std::cout << std::endl << "solndistrib not seen: ";
+      for (int i=0; i<graph.n_nodes; i++) {
+        if (___seen_nodes.find(i) == ___seen_nodes.end()) {
+//          std::cout << i << " ";
+        }
+      }
+//      std::cout << std::endl;
+      assert(___seen_nodes.size() == graph.n_nodes);
     }
 
 //    std::cout << laplacian << std::endl;
 
-    {
+    const bool INVERSION_APPROX = true;
+
+
+    std::unordered_map<node_t,double> ___REAL_ONES_DENS;
+
+
+//    if (!INVERSION_APPROX) {
+    { // TMP TMP
       Region r(home);
       // Number of edges whose density is not calculated per node
       auto *cards = r.alloc<unsigned int>(graph.n_nodes);
@@ -355,36 +401,38 @@ public:
         {
           auto nptr = std::max_element(cards, cards + graph.n_nodes);
           if (*nptr == 0) break;
-          jj = (node_t)(nptr - cards);
+          jj = (node_t) (nptr - cards);
         }
 
         arma::mat inv;
         {
-          arma::uvec idxs(graph.n_nodes-1);
+          arma::uvec idxs(graph.n_nodes - 1);
           int n = 0;
-          for (int i=0; i<graph.n_nodes-1; i++) {
+          for (int i = 0; i < graph.n_nodes - 1; i++) {
             if (i == jj) n++;
             idxs[i] = n++;
           }
 
-          inv = arma::inv(laplacian.submat(idxs, idxs));
+          inv = arma::inv_sympd(laplacian.submat(idxs, idxs));
         }
 
         // We have to explore each edge in each node of the cc jj
-        for (int n=0; n<graph.n_nodes; n++) {
+        for (int n = 0; n < graph.n_nodes; n++) {
           if (ncc[n] == jj) {
             for_each_adj(n, [&](node_t adj_n, BoolView& adj_v) {
-              if (adj_v.none() && visitied_edges.find(adj_v.id()) == visitied_edges.end()) {
+              if (adj_v.none() &&
+                  visitied_edges.find(adj_v.id()) == visitied_edges.end()) {
                 // Diagonal index for density
                 auto ii = ncc[adj_n];
                 // Because size(laplacian) > size(inv)
                 double dens;
-                if (ii > jj) dens = inv(ii-1, ii-1);
-                else         dens = inv(ii, ii);
+                if (ii > jj) dens = inv(ii - 1, ii - 1);
+                else dens = inv(ii, ii);
 
-                dist->marginaldistrib(id(), adj_v.id(), 1, dens);
-                dist->marginaldistrib(id(), adj_v.id(), 0, 1-dens);
+//                dist->marginaldistrib(id(), adj_v.id(), 1, dens);
+//                dist->marginaldistrib(id(), adj_v.id(), 0, 1 - dens);
                 visitied_edges.insert(adj_v.id());
+                ___REAL_ONES_DENS[adj_v.id()] = dens;
 
                 cards[jj] -= 1;
                 cards[ii] -= 1;
@@ -393,7 +441,88 @@ public:
           }
         }
       }
-    }
+
+    } // TMP TMP
+//    } else {
+
+      const int n = graph.n_nodes;
+
+      // Compute f[L,i], forall nodes
+      Region r(home);
+      auto fL = r.alloc<int>(n);
+      {
+        for (int i = 0; i < n; i++) {
+          assert(fL[i] == 0);
+        }
+
+        for (int i = 0; i < n; i++) {
+          for (int k = 0; k < n - 1; k++)
+            if (k != i)
+              for (int l = k + 1; l < n; l++)
+                if (l != i)
+                  fL[i] += 2 * laplacian(k,i) * laplacian(k,l) * laplacian(l,i);
+          for (int k = 0; k < n; k++)
+            if (k != i)
+              fL[i] += std::pow(laplacian(k,i), 2) * laplacian(k, k);
+        }
+      }
+
+      // We visit each edge and assign its density
+      DFS_all(0, [&](node_t node) {
+        auto jj = ncc[node];
+        for_each_adj(node, [&](node_t adj_n, BoolView& adj_v) {
+          if (adj_v.none()) {
+            auto ii = ncc[adj_n];
+            // We are going to see each edge two times and we only want
+            // to add it one time
+            if (ii > jj) {
+              /**
+               * Body itération chaque edge (i,j)
+               */
+              // Called f[A,i], maybe change name in article.
+              auto A = fL[ii];
+              // On enlève tous les occurences lorsque l == j, forall k
+              for (int k = 0; k < n; k++)
+                if (k != ii)
+                  A -= laplacian(k, ii) * laplacian(k, jj) * laplacian(jj, ii);
+              // On enlève tous les occurences lorsque k == j, forall l
+              for (int l = 0; l < n; l++)
+                if (l != ii)
+                  A -= laplacian(jj, ii) * laplacian(jj, l) * laplacian(l, ii);
+
+              // On a un élément deux fois
+              A += laplacian(ii, jj) * laplacian(jj, jj) * laplacian(jj, ii);
+
+              int B = 0;
+              for (int k = 0; k < n; k++)
+                if (k != ii && k != jj)
+                  B += std::pow(laplacian(k, ii), 2);
+
+              double dens;
+              if (A == 0)
+                dens = 1 / laplacian(ii,ii);
+              else
+                dens = (double) A / (laplacian(ii, ii) * A - std::pow(B, 2));
+
+              ___TOT_ECART_DENS += ___REAL_ONES_DENS[adj_v.id()] - dens;
+              ___TOT_DENS += ___REAL_ONES_DENS[adj_v.id()];
+              ___NB_DENS_CALC += 1;
+
+
+              if (dens > ___REAL_ONES_DENS[adj_v.id()] + 0.001) {
+                std::cout << dens << " <= " <<  ___REAL_ONES_DENS[adj_v.id()] << std::endl;
+                assert(false);
+              }
+
+              dist->marginaldistrib(id(), adj_v.id(), 1, dens);
+              dist->marginaldistrib(id(), adj_v.id(), 0, 1 - dens);
+            }
+          }
+        });
+        return ES_OK;
+      });
+
+//    }
   }
 
   void solndistribsize(SolnDistribSize *s, unsigned int& domsum,
@@ -521,11 +650,11 @@ public:
 
     for (int i=0; i<n_nodes; i++) {
       assert(adj_edges[i].size() != 0);
-      rel(*this, sum(adj_edges[i]) <= 2);
+//      rel(*this, sum(adj_edges[i]) <= 2);
     }
 
     cbsbranch(*this, e,  CBSBranchingHeuristic::MAX_SD);
-    branch(*this, e, BOOL_VAR_NONE(), BOOL_VAL_MIN());
+//    branch(*this, e, BOOL_VAR_NONE(), BOOL_VAL_MIN());
   }
 
   ConstrainedSpanningTree(bool share, ConstrainedSpanningTree& s)
@@ -543,6 +672,10 @@ public:
       if (e[i].none()) finished = false;
 
     if (finished) {
+
+      std::cout << "ecart moy: " << ___TOT_ECART_DENS / (double)___NB_DENS_CALC << std::endl;
+      std::cout << "dens moy: " << ___TOT_DENS / (double)___NB_DENS_CALC << std::endl;
+
       n_nodes_t           n_nodes;
       n_edges_t           n_edges;
       std::vector<edge_t> edges;
