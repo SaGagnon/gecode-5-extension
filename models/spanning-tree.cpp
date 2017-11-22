@@ -11,9 +11,10 @@
  * CONFIG VARIABLES
  */
 bool ALGO_APPROX = false;
+bool LAPLACIAN_TRIM = false;
 
 // Pour voir comment l'algo de calcul exact réagit à une imprécision.
-#define PERTURBATION
+//#define PERTURBATION
 
 #ifdef PERTURBATION
 /**
@@ -23,7 +24,7 @@ std::mt19937 gen;
 #endif
 
 // Pour voir les densités moyenne calculées
-#define MOY
+//#define MOY
 
 #ifdef MOY
 double _DENS_TOT = 0;
@@ -321,16 +322,6 @@ public:
       });
     }
 
-    auto get_idxs = [&](unsigned int _jj) {
-      arma::uvec idxs(graph.n_nodes - 1);
-      int n = 0;
-      for (int i = 0; i < graph.n_nodes - 1; i++) {
-        if (i == _jj) n++;
-        idxs[i] = n++;
-      }
-      return idxs;
-    };
-
     if (!ALGO_APPROX) {
       Region r(home);
       // Number of edges whose density is not calculated per node
@@ -343,6 +334,18 @@ public:
           cards[jj] = degree;
         }
       }
+
+      // CC refering to master nodes to their position in the reduced laplacian
+      std::unordered_map<unsigned, unsigned> cc_to_minilap;
+      {
+        unsigned pos = 0;
+        for(int i=0; i<graph.n_nodes; i++)
+          if (cards[i] != 0)
+            cc_to_minilap[i] = pos++;
+
+        std::cout << "largeur = " << pos << std::endl;
+      }
+
 
       // Visited edge ids (for which we already calculated densities)
       std::set<unsigned int> visitied_edges;
@@ -358,7 +361,28 @@ public:
 
         arma::mat inv;
         {
-          auto idxs = get_idxs(jj);
+          arma::uvec idxs;
+          if (LAPLACIAN_TRIM) {
+            std::vector<unsigned> _idxs;
+            unsigned n = 0;
+            for (int i=0; i<graph.n_nodes; i++)
+              if (i != jj && laplacian(i,i) != 1)
+                _idxs.push_back(i);
+
+            // TODO: REFAIRE ÇA...
+            idxs = arma::uvec(_idxs.size());
+            for (int i=0; i<_idxs.size(); i++) {
+              idxs[i] = _idxs[i];
+            }
+          } else {
+            idxs = arma::uvec(graph.n_nodes - 1);
+            int n = 0;
+            for (int i = 0; i < graph.n_nodes - 1; i++) {
+              if (i == jj) n++;
+              idxs[i] = n++;
+            }
+          }
+          // TODO: Regarder si on a un slow down a cause du view
           inv = arma::inv_sympd(laplacian.submat(idxs, idxs));
         }
 
@@ -372,8 +396,25 @@ public:
                 auto ii = ncc[adj_n];
                 // Because size(laplacian) > size(inv)
                 double dens;
-                if (ii > jj) dens = inv(ii - 1, ii - 1);
-                else dens = inv(ii, ii);
+
+                assert(cc_to_minilap.find(ii) != cc_to_minilap.end());
+
+                // ii and jj will change depending on if we reduce the laplacian
+                // or not when inverting.
+                unsigned lii, ljj;
+                if (LAPLACIAN_TRIM) {
+                  lii = cc_to_minilap[ii];
+                  ljj = cc_to_minilap[jj];
+                } else {
+                  lii = ii;
+                  ljj = jj;
+                }
+
+                 if (lii > ljj) {
+                  dens = inv(lii-1,lii-1);
+                } else {
+                  dens = inv(lii, lii);
+                }
 
                 #ifdef PERTURBATION
                 dens += dis(gen);
@@ -637,7 +678,9 @@ main(int argc, char* argv[]) {
   for (int i=0; i<argc; i++) {
     std::string curr_param = argv[i];
     if (curr_param == "-approx")
-       ALGO_APPROX = true;
+      ALGO_APPROX = true;
+    else if (curr_param == "-trim")
+      LAPLACIAN_TRIM = true;
   }
   Script::run<ConstrainedSpanningTree,DFS,InstanceOptions>(opt);
 
