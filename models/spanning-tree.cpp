@@ -7,6 +7,16 @@
 
 #include "cbs.hpp"
 
+/**
+ * CONFIG VARIABLES
+ */
+bool ALGO_APPROX = false;
+
+/**
+ * RANDOM
+ */
+std::mt19937 gen;
+
 using namespace Gecode;
 
 using node_t      = unsigned int;
@@ -31,10 +41,15 @@ namespace io {
     auto n_nodes = stoi(lines[0]);
     auto n_edges = stoi(lines[1]);
 
-    assert(lines.size() == 2 + (TP?n_nodes:0) + n_edges);
+    // When reading graphs from TP3 INF4705 H17
+    int excess = 0;
+    if (lines.size() == 2 + n_nodes + n_edges)
+      excess = n_nodes;
+
+    assert(lines.size() == 2 + excess + n_edges);
 
     std::vector<edge_t> edges((size_t)n_edges);
-    transform(lines.begin() + 2 + (TP?n_nodes:0), lines.end(), edges.begin(),
+    transform(lines.begin() + 2 + excess, lines.end(), edges.begin(),
               [](const std::string& line) {
                 int n1, n2;
                 std::stringstream(line) >> n1 >> n2;
@@ -189,6 +204,23 @@ public:
       });
       if (ret != ES_OK) return ret;
 
+
+      if (CC.size() >= 3) {
+        // We make sure there's no unassigned edges pointing to the CC itself
+        ret = DFS_one(*CC.begin(), [&](node_t node) {
+          for_each_adj(node, [&](node_t adj_n, BoolView& adj_v) {
+            if (adj_v.none() && CC.find(adj_n) != CC.end()) {
+              adj_v.eq(home, 0);
+              // See last comment
+              return ES_NOFIX;
+            }
+          });
+          return ES_OK;
+        });
+        if (ret != ES_OK) return ret;
+      }
+
+
       // Number of adjacent unassigned edges for the cc
       int n_unassigned = 0;
       BoolView last_view_unassigned;
@@ -218,22 +250,6 @@ public:
         return ES_NOFIX;
       }
 
-      if (CC.size() >= 3) {
-        // We make sure there's no unassigned edges pointing to the CC itself
-        ret = DFS_one(*CC.begin(), [&](node_t node) {
-          for_each_adj(node, [&](node_t adj_n, BoolView& adj_v) {
-            if (adj_v.none() && CC.find(adj_n) != CC.end()) {
-              adj_v.eq(home, 0);
-              // See previous comment before last "redo_propagation = true"
-//                redo_propagation = true;
-              return ES_NOFIX;
-            }
-          });
-          return ES_OK;
-        });
-        if (ret != ES_OK) return ret;
-      }
-
     }
 
     if (x.assigned()) {
@@ -243,6 +259,9 @@ public:
   }
 
   void solndistrib(Space& home, SolnDistrib *dist) const override {
+
+    std::uniform_real_distribution<> dis(-0.3, 0);
+
     // each node belong to a connected component identified by a master node
     std::unordered_map<node_t, unsigned int> ncc;
     {
@@ -285,8 +304,6 @@ public:
       });
     }
 
-    const bool INVERSION_APPROX = true;
-
     auto get_idxs = [&](unsigned int _jj) {
       arma::uvec idxs(graph.n_nodes - 1);
       int n = 0;
@@ -297,7 +314,7 @@ public:
       return idxs;
     };
 
-    if (!INVERSION_APPROX) {
+    if (!ALGO_APPROX) {
       Region r(home);
       // Number of edges whose density is not calculated per node
       auto *cards = r.alloc<unsigned int>(graph.n_nodes);
@@ -341,10 +358,14 @@ public:
                 if (ii > jj) dens = inv(ii - 1, ii - 1);
                 else dens = inv(ii, ii);
 
+                dens += dis(gen); // TEST -- TMP
+
                 dist->marginaldistrib(id(), adj_v.id(), 1, dens);
                 dist->marginaldistrib(id(), adj_v.id(), 0, 1 - dens);
                 visitied_edges.insert(adj_v.id());
 
+                assert(cards[ii] !=0);
+                assert(cards[jj] !=0);
                 cards[jj] -= 1;
                 cards[ii] -= 1;
               }
@@ -413,6 +434,8 @@ public:
                 dens = 1 / laplacian(ii,ii);
               else
                 dens = (double) A / (laplacian(ii, ii) * A - std::pow(B, 2));
+
+              dens += dis(gen); // TEST -- TMP
 
               dist->marginaldistrib(id(), adj_v.id(), 1, dens);
               dist->marginaldistrib(id(), adj_v.id(), 0, 1 - dens);
@@ -550,7 +573,7 @@ public:
 
     for (int i=0; i<n_nodes; i++) {
       assert(adj_edges[i].size() != 0);
-//      rel(*this, sum(adj_edges[i]) <= 2);
+      rel(*this, sum(adj_edges[i]) <= 2);
     }
 
     cbsbranch(*this, e,  CBSBranchingHeuristic::MAX_SD);
@@ -569,11 +592,20 @@ public:
 
 int
 main(int argc, char* argv[]) {
+  std::random_device rd;
+  gen = std::mt19937(rd());
+
   InstanceOptions opt("Spanning Tree");
   opt.ipl(IPL_DOM);
   opt.solutions(1);
 //  opt.mode(SM_GIST);
   opt.parse(argc, argv);
+
+  for (int i=0; i<argc; i++) {
+    std::string curr_param = argv[i];
+    if (curr_param == "-approx")
+       ALGO_APPROX = true;
+  }
 
   Script::run<ConstrainedSpanningTree,DFS,InstanceOptions>(opt);
 }
