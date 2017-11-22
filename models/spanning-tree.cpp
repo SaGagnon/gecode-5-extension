@@ -12,10 +12,23 @@
  */
 bool ALGO_APPROX = false;
 
+// Pour voir comment l'algo de calcul exact réagit à une imprécision.
+#define PERTURBATION
+
+#ifdef PERTURBATION
 /**
  * RANDOM
  */
 std::mt19937 gen;
+#endif
+
+// Pour voir les densités moyenne calculées
+#define MOY
+
+#ifdef MOY
+double _DENS_TOT = 0;
+double _CNT = 0;
+#endif
 
 using namespace Gecode;
 
@@ -260,7 +273,10 @@ public:
 
   void solndistrib(Space& home, SolnDistrib *dist) const override {
 
+    #ifdef PERTURBATION
     std::uniform_real_distribution<> dis(-0.3, 0);
+//    std::uniform_real_distribution<> dis(-0.05, 0.05);
+    #endif
 
     // each node belong to a connected component identified by a master node
     std::unordered_map<node_t, unsigned int> ncc;
@@ -276,6 +292,7 @@ public:
         });
       }
     }
+
 
     arma::mat laplacian;
     {
@@ -358,7 +375,14 @@ public:
                 if (ii > jj) dens = inv(ii - 1, ii - 1);
                 else dens = inv(ii, ii);
 
-                dens += dis(gen); // TEST -- TMP
+                #ifdef PERTURBATION
+                dens += dis(gen);
+                #endif
+
+                #ifdef MOY
+                _DENS_TOT += dens;
+                _CNT++;
+                #endif
 
                 dist->marginaldistrib(id(), adj_v.id(), 1, dens);
                 dist->marginaldistrib(id(), adj_v.id(), 0, 1 - dens);
@@ -435,7 +459,14 @@ public:
               else
                 dens = (double) A / (laplacian(ii, ii) * A - std::pow(B, 2));
 
+              #ifdef PERTURBATION
               dens += dis(gen); // TEST -- TMP
+              #endif
+
+              #ifdef MOY
+              _DENS_TOT += dens;
+              _CNT++;
+              #endif
 
               dist->marginaldistrib(id(), adj_v.id(), 1, dens);
               dist->marginaldistrib(id(), adj_v.id(), 0, 1 - dens);
@@ -592,8 +623,10 @@ public:
 
 int
 main(int argc, char* argv[]) {
+  #ifdef PERTURBATION
   std::random_device rd;
   gen = std::mt19937(rd());
+  #endif
 
   InstanceOptions opt("Spanning Tree");
   opt.ipl(IPL_DOM);
@@ -606,6 +639,11 @@ main(int argc, char* argv[]) {
     if (curr_param == "-approx")
        ALGO_APPROX = true;
   }
-
   Script::run<ConstrainedSpanningTree,DFS,InstanceOptions>(opt);
+
+  #ifdef MOY
+  std::cout << "DENS MOY = " << _DENS_TOT / _CNT << std::endl;
+  #endif
+
+
 }
