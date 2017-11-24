@@ -72,6 +72,34 @@ namespace io {
 
     return std::make_tuple(n_nodes, n_edges, std::move(edges));
   };
+
+
+  std::tuple<n_nodes_t, n_edges_t, std::vector<edge_t>>
+  graph_HCP(const std::vector<std::string>& lines) {
+    assert(lines.size() >= 10);
+
+    unsigned int n_nodes;
+    {
+      std::stringstream ss(lines[3]);
+      std::string word;
+      for (int i=0; i<3; i++)
+        ss >> word;
+      n_nodes = (unsigned int)std::stoi(word);
+    }
+
+    unsigned int n_edges = 0;
+
+    std::vector<edge_t> edges;
+    transform(lines.begin() + 6, lines.end() - 2, std::back_inserter(edges),
+              [&n_edges](const std::string& line) {
+                n_edges++;
+                int n1, n2;
+                std::stringstream(line) >> n1 >> n2;
+                return std::make_pair(n1 - 1, n2 - 1);
+              });
+
+    return std::make_tuple(n_nodes, n_edges, std::move(edges));
+  };
 }
 
 namespace utils {
@@ -627,7 +655,7 @@ public:
     n_edges_t           n_edges;
     std::vector<edge_t> edges;
 
-    std::tie(n_nodes, n_edges, edges) = io::graph(io::lines(opt.instance()));
+    std::tie(n_nodes, n_edges, edges) = io::graph_HCP(io::lines(opt.instance()));
 
     e =  BoolVarArray(*this, (int)edges.size(), 0, 1);
 
@@ -671,7 +699,7 @@ public:
       n_edges_t           n_edges;
       std::vector<edge_t> edges;
 
-      std::tie(n_nodes, n_edges, edges) = io::graph(io::lines(instance));
+      std::tie(n_nodes, n_edges, edges) = io::graph_HCP(io::lines(instance));
 
       std::vector<std::vector<node_t>> adj_list(n_nodes);
       {
@@ -698,8 +726,6 @@ public:
 
 
       auto u_nodes = utils::set_zero_to<node_t>(n_nodes);
-
-      node_t start = *u_nodes.begin();
 
       using parent_node_t = node_t;
       std::stack<std::pair<parent_node_t, node_t>> stack;
