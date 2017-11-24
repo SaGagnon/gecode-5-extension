@@ -343,7 +343,7 @@ public:
           if (cards[i] != 0)
             cc_to_minilap[i] = pos++;
 
-        std::cout << "largeur = " << pos << std::endl;
+//        std::cout << "largeur = " << pos << std::endl;
       }
 
 
@@ -659,6 +659,84 @@ public:
 
   Space* copy(bool share) override {
     return new ConstrainedSpanningTree(share,*this);
+  }
+
+  void print(std::ostream& os) const override {
+    bool finished = true;
+    for (int i=0; i<e.size(); i++)
+      if (e[i].none()) finished = false;
+
+    if (finished) {
+      n_nodes_t           n_nodes;
+      n_edges_t           n_edges;
+      std::vector<edge_t> edges;
+
+      std::tie(n_nodes, n_edges, edges) = io::graph(io::lines(instance));
+
+      std::vector<std::vector<node_t>> adj_list(n_nodes);
+      {
+//        std::cout << "sol: " << std::endl;
+        n_edges_t n_edges_sol = 0;
+        for (int i = 0; i < n_edges; i++) {
+          if (e[i].one()) {
+            node_t n1, n2;
+            std::tie(n1, n2) = edges[i];
+            adj_list[n1].push_back(n2);
+            adj_list[n2].push_back(n1);
+
+            n_edges_sol++;
+//            std::cout << n1+1 << " " << n2+1 << std::endl;
+          }
+        }
+        assert(n_edges_sol == n_nodes - 1);
+      }
+
+
+      for (int i=0; i<n_nodes; i++) {
+        assert(!adj_list[i].empty());
+      }
+
+
+      auto u_nodes = utils::set_zero_to<node_t>(n_nodes);
+
+      node_t start = *u_nodes.begin();
+
+      using parent_node_t = node_t;
+      std::stack<std::pair<parent_node_t, node_t>> stack;
+
+      // For finding first student for printing TP solutions
+      int starting_node = -1;
+      for (int i=0; i<n_nodes; i++) {
+        if (adj_list[i].size() == 1) {
+          starting_node = i;
+          break;
+        }
+      }
+
+      stack.emplace(starting_node, starting_node);
+
+//      std::cout << "sol: " << std::endl;
+      while (!stack.empty()) {
+        parent_node_t parent; node_t node;
+        std::tie(parent, node) = stack.top();
+        stack.pop();
+
+        auto n_ereased = u_nodes.erase(node);
+        assert(n_ereased == 1);
+
+
+        // print sol tp
+//        std::cout << node+1 << std::endl;
+
+        for (unsigned int adj_n : adj_list[node]) {
+          if (adj_n != parent)
+            stack.emplace(node, adj_n);
+        }
+      }
+//      std::cout << "fin" << std::endl;
+      assert(u_nodes.empty());
+    }
+
   }
 };
 
