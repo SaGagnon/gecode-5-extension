@@ -322,7 +322,6 @@ public:
       }
     }
 
-
     arma::mat laplacian;
     {
       std::set<int> ___seen_nodes;
@@ -330,12 +329,12 @@ public:
       DFS_all(0, [&](node_t node) {
         assert(___seen_nodes.find(node) == ___seen_nodes.end());
         ___seen_nodes.insert(node);
-        if (ncc[node] != node)
-          laplacian(node, node) = 1;
+//        if (ncc[node] != node)
+//          laplacian(node, node) = 1;
         for_each_adj(node, [&](node_t adj_n, BoolView& adj_v) {
           // We are going to see each edge two times and we only want
           // to add it one time
-          if (!adj_v.none()) return ES_OK;
+          if (adj_v.assigned()) return ES_OK;
           if (adj_v.none() && node < adj_n) {
             auto cc1 = ncc[node];
             auto cc2 = ncc[adj_n];
@@ -348,6 +347,7 @@ public:
         });
         return ES_OK;
       });
+      assert(___seen_nodes.size() == graph.n_nodes);
     }
 
     if (!ALGO_APPROX) {
@@ -355,12 +355,13 @@ public:
       // Number of edges whose density is not calculated per node
       auto *cards = r.alloc<unsigned int>(graph.n_nodes);
       for (int jj = 0; jj < graph.n_nodes; jj++) {
-        unsigned int degree = laplacian(jj, jj);
-        if (degree == 1) { // Because of contraction
-          cards[jj] = 0;
-        } else {
-          cards[jj] = degree;
-        }
+        cards[jj] = laplacian(jj, jj);
+//        unsigned int degree = laplacian(jj, jj);
+//        if (degree == 1) { // Because of contraction
+//          cards[jj] = 0;
+//        } else {
+//          cards[jj] = degree;
+//        }
       }
 
       // CC refering to master nodes to their position in the reduced laplacian
@@ -394,7 +395,7 @@ public:
             std::vector<unsigned> _idxs;
             unsigned n = 0;
             for (int i=0; i<graph.n_nodes; i++)
-              if (i != jj && laplacian(i,i) != 1)
+              if (i != jj && laplacian(i,i) != 0)
                 _idxs.push_back(i);
 
             // TODO: REFAIRE ÇA...
@@ -409,6 +410,10 @@ public:
               if (i == jj) n++;
               idxs[i] = n++;
             }
+            // We put 1 in merged nodes before inversion
+            for (int i=0; i<graph.n_nodes; i++)
+              if (laplacian(i,i) == 0)
+                laplacian(i,i) = 1;
           }
           // TODO: Regarder si on a un slow down a cause du view
           inv = arma::inv_sympd(laplacian.submat(idxs, idxs));
@@ -657,9 +662,29 @@ public:
 
     std::tie(n_nodes, n_edges, edges) = io::graph_HCP(io::lines(opt.instance()));
 
-    e =  BoolVarArray(*this, (int)edges.size(), 0, 1);
-
+    // For the spanning tree constraint
+    e = BoolVarArray(*this, (int)edges.size(), 0, 1);
     spanning_tree_ctr(*this, e, edges, n_nodes);
+
+    /* For the path constraint
+     *
+     * <0..n_nodes> instead of <0..n_nodes-1> because x[i] == n_nodes tells
+     * the node i is the last one in the path
+     */
+    IntVarArgs x(*this, n_nodes, 0, n_nodes);
+    path(*this, x, IntVar(*this, 0, n_nodes-1), IntVar(*this, 0, n_nodes-1));
+
+    // Array of bools for the domains of each x_i of path (for channelling)
+    std::vector<BoolVarArgs> bdoms(n_nodes); // (bool domains)
+    for (int i=0; i<n_nodes; i++) {
+      // n_nodes+1 because of dummy node (see above comment)
+      bdoms[i] = BoolVarArgs(*this, n_nodes+1, 0, 1);
+      // By default, each edge (except the last dummy one) is false. We
+      // overwrite permitted edges with their corresponding variable in e after
+      for (int j=0; j<n_nodes; j++) {
+        rel(*this, bdoms[i][j] == 0);
+      }
+    }
 
     std::vector<BoolVarArgs> adj_edges(n_nodes);
     assert(adj_edges.size() == n_nodes);
@@ -669,6 +694,21 @@ public:
 
       adj_edges[n1] << e[i];
       adj_edges[n2] << e[i];
+
+      // We can't give e[i] to bdoms[n1][n2] and bdoms[n2][n1] as it corresponds
+      // to an undirected edge. We must create a new one.
+      BoolVar e1(*this, 0, 1);
+      BoolVar e2(*this, 0, 1);
+      bdoms[n1][n2] = e1;
+      bdoms[n2][n1] = e2;
+      // e[i] == e1 OR e2
+      rel(*this, e1, BOT_OR, e2, e[i]);
+      rel(*this, e1, BOT_AND, e2, 0);
+    }
+
+    // Channelling
+    for (int i=0; i<n_nodes; i++) {
+      channel(*this, bdoms[i], x[i]);
     }
 
     for (int i=0; i<n_nodes; i++) {
@@ -677,7 +717,7 @@ public:
     }
 
     cbsbranch(*this, e,  CBSBranchingHeuristic::MAX_SD);
-    branch(*this, e, BOOL_VAR_NONE(), BOOL_VAL_MIN());
+//    branch(*this, x, INT_VAR_AFC_SIZE_MAX(opt.decay()), INT_VAL_MIN());
   }
 
   ConstrainedSpanningTree(bool share, ConstrainedSpanningTree& s)
