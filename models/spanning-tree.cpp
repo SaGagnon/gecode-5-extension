@@ -653,6 +653,13 @@ protected:
   BoolVarArray e;
   const std::string instance;
 public:
+  /// Branching to use for model
+  enum {
+    BRANCH_SIZE,
+    BRANCH_AFC_SIZE,
+    BRANCH_CBS_MAX_SD,
+    BRANCH_CBS_A_AVG_SD
+  };
   explicit ConstrainedSpanningTree(const InstanceOptions& opt)
     : Script(opt), instance(opt.instance()) {
 
@@ -716,8 +723,17 @@ public:
       rel(*this, sum(adj_edges[i]) <= 2);
     }
 
-    cbsbranch(*this, e,  CBSBranchingHeuristic::MAX_SD);
-//    branch(*this, x, INT_VAR_AFC_SIZE_MAX(opt.decay()), INT_VAL_MIN());
+    switch (opt.branching()) {
+      case BRANCH_SIZE:
+        branch(*this, x, INT_VAR_SIZE_MIN(), INT_VAL_MIN());
+        break;
+      case BRANCH_AFC_SIZE:
+        branch(*this, x, INT_VAR_AFC_SIZE_MAX(opt.decay()), INT_VAL_MIN());
+        break;
+      case BRANCH_CBS_MAX_SD:
+        cbsbranch(*this, e, CBSBranchingHeuristic::MAX_SD);
+        break;
+    }
   }
 
   ConstrainedSpanningTree(bool share, ConstrainedSpanningTree& s)
@@ -817,6 +833,12 @@ main(int argc, char* argv[]) {
   opt.ipl(IPL_DOM);
   opt.solutions(1);
 //  opt.mode(SM_GIST);
+
+  opt.branching(ConstrainedSpanningTree::BRANCH_CBS_MAX_SD);
+  opt.branching(ConstrainedSpanningTree::BRANCH_SIZE, "size");
+  opt.branching(ConstrainedSpanningTree::BRANCH_AFC_SIZE, "afc");
+  opt.branching(ConstrainedSpanningTree::BRANCH_CBS_MAX_SD, "cbs_max_sd");
+
   opt.parse(argc, argv);
 
   for (int i=0; i<argc; i++) {
