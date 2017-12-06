@@ -44,6 +44,8 @@
 
 using namespace Gecode;
 
+bool EXFILE = false;
+
 /// Instance data
 namespace {
 
@@ -105,10 +107,42 @@ namespace {
     }
     /// Find instance by name \a s
     static const int* find(const char* s) {
-      for (int i=0; name[i] != NULL; i++)
-        if (!strcmp(s,name[i]))
-          return qcp[i];
-      return NULL;
+      if (!EXFILE) {
+        for (int i = 0; name[i] != NULL; i++)
+          if (!strcmp(s, name[i]))
+            return qcp[i];
+        return NULL;
+      } else {
+        std::vector<std::string> lines;
+        {
+          std::ifstream f(s);
+          std::string line;
+          while (getline(f, line))
+            lines.push_back(line);
+        }
+
+        int n;
+        {
+          std::string word;
+          std::stringstream ss(lines[0]);
+          ss >> word >> word;
+          n = std::stoi(word);
+        }
+
+        int* data = new int[n*n];
+        data[0] = n;
+
+        for (int i=0; i<n; i++) {
+          std::stringstream ss(lines[i+1]);
+          for (int j=0; j<n; j++) {
+            int num;
+            ss >> num;
+            num += 1;
+            data[i*n+j+1] = num;
+          }
+        }
+        return data;
+      }
     }
   public:
     /// Whether a valid specification has been found
@@ -318,6 +352,14 @@ main(int argc, char* argv[]) {
   opt.instance(name[0]);
 
   opt.parse(argc,argv);
+
+
+  for (int i=0; i<argc; i++) {
+    std::string curr_param = argv[i];
+    if (curr_param == "-exfile")
+      EXFILE = true;
+  }
+
   if (!Spec(opt.instance()).valid()) {
     std::cerr << "Error: unkown instance" << std::endl;
     return 1;
