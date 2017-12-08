@@ -214,7 +214,7 @@ public:
       x(x0), varInBrancher(x0),
       logProp(LogProp::size_type(), LogProp::hasher(),
               LogProp::key_equal(), LogProp::allocator_type(home)) {
-    assert(recomputation_ratio0 > 0 && recomputation_ratio0 <= 1);
+    assert(recomputation_ratio0 >= 0 && recomputation_ratio0 <= 1);
     // Because we must call the destructor of aAvgSD
     home.notice(*this,AP_DISPOSE);
     // The VarIdToPos object is first implicitly constructed with the default
@@ -429,24 +429,27 @@ enum CBSBranchingHeuristic {
 };
 
 template<class View, class T>
-void _cbsbranch(Home home, const T& x, CBSBranchingHeuristic s) {
+void _cbsbranch(Home home, const T& x, CBSBranchingHeuristic s,
+                double recomputation_ratio = 1) {
   if (home.failed()) return;
   ViewArray<View> y(home,x);
   switch(s) {
     case MAX_SD:
-      MAXSD<View>::post(home,y,1);
+      MAXSD<View>::post(home,y,recomputation_ratio);
       break;
     default:
       assert(false);
   }
 }
 
-void cbsbranch(const Home& home, const IntVarArgs& x, CBSBranchingHeuristic s) {
-  _cbsbranch<Int::IntView,IntVarArgs>(home,x,s);
+void cbsbranch(const Home& home, const IntVarArgs& x, CBSBranchingHeuristic s,
+               double recomputation_ratio = 1) {
+  _cbsbranch<Int::IntView,IntVarArgs>(home,x,s,recomputation_ratio);
 }
 
-void cbsbranch(const Home& home, const BoolVarArgs& x, CBSBranchingHeuristic s) {
-  _cbsbranch<Int::BoolView,BoolVarArgs>(home,x,s);
+void cbsbranch(const Home& home, const BoolVarArgs& x, CBSBranchingHeuristic s,
+               double recomputation_ratio = 1) {
+  _cbsbranch<Int::BoolView,BoolVarArgs>(home,x,s,recomputation_ratio);
 }
 
 #endif //__CBS_HPP__

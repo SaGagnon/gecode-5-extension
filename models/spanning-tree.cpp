@@ -12,6 +12,7 @@
  */
 bool ALGO_APPROX = false;
 bool LAPLACIAN_TRIM = false;
+double RECOMPUTATION_RATIO = 1;
 
 // Pour voir comment l'algo de calcul exact réagit à une imprécision.
 //#define PERTURBATION
@@ -731,7 +732,7 @@ public:
         branch(*this, x, INT_VAR_AFC_SIZE_MAX(opt.decay()), INT_VAL_MIN());
         break;
       case BRANCH_CBS_MAX_SD:
-        cbsbranch(*this, e, CBSBranchingHeuristic::MAX_SD);
+        cbsbranch(*this, e, CBSBranchingHeuristic::MAX_SD, RECOMPUTATION_RATIO);
         break;
     }
   }
@@ -788,12 +789,22 @@ public:
 
       // For finding first student for printing TP solutions
       int starting_node = -1;
+      int end_node = -1;
+      int n_nodes_with_degree_one = 0;
       for (int i=0; i<n_nodes; i++) {
         if (adj_list[i].size() == 1) {
-          starting_node = i;
-          break;
+          if (starting_node == -1)
+            starting_node = i;
+          else
+            end_node = i;
+          n_nodes_with_degree_one++;
+        } else {
+          assert(adj_list[i].size() == 2);
         }
       }
+
+      assert(n_nodes_with_degree_one == 2);
+
 
       stack.emplace(starting_node, starting_node);
 
@@ -818,7 +829,6 @@ public:
 //      std::cout << "fin" << std::endl;
       assert(u_nodes.empty());
     }
-
   }
 };
 
@@ -847,12 +857,12 @@ main(int argc, char* argv[]) {
       ALGO_APPROX = true;
     else if (curr_param == "-trim")
       LAPLACIAN_TRIM = true;
+    else if (curr_param == "-recomp")
+      RECOMPUTATION_RATIO = std::stod(argv[++i]);
   }
   Script::run<ConstrainedSpanningTree,DFS,InstanceOptions>(opt);
 
   #ifdef MOY
   std::cout << "DENS MOY = " << _DENS_TOT / _CNT << std::endl;
   #endif
-
-
 }

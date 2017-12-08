@@ -68,7 +68,7 @@ include_directories(./)
 
 foreach(ex "latinsquare" "nonogram" "qcp" "magic-square" "minimum-deficiency"
         "bin-packing" "crowded-chess" "spanning-tree" "langford-number"
-        "ortho-latin")
+        "ortho-latin" "all-interval")
     if(${ex} STREQUAL "bin-packing")
         find_package(Threads REQUIRED)
     endif()
