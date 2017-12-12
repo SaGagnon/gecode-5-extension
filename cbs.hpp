@@ -404,7 +404,9 @@ public:
     for_every_log_entry([&](PropId prop_id, SlnCnt slnCnt,
                             VarId var_id, Val val, SlnCnt dens) {
       unsigned int pos = varpos[var_id];
-      if (dens > best.dens || (dens == best.dens && var_id < best.var_id))
+      double diff = dens - best.dens;
+      double precision = 0.001;
+      if (diff > precision || (std::abs(diff) < precision && var_id < best.var_id))
         best = {var_id, val, dens};
     });
     assert(best.var_id != 0);
