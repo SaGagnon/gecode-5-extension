@@ -45,6 +45,7 @@
 using namespace Gecode;
 
 bool EXFILE = false;
+double RECOMPUTATION_RATIO = 1;
 
 /// Instance data
 namespace {
@@ -243,15 +244,15 @@ public:
         branch(*this, e, INT_VAR_AFC_SIZE_MAX(opt.decay()), INT_VAL_MIN());
         break;
       case BRANCH_CBS_MAX_SD:
-        cbsbranch(*this, e, CBSBranchingHeuristic::MAX_SD);
+        cbsbranch(*this, e, CBSBranchingHeuristic::MAX_SD, RECOMPUTATION_RATIO);
         branch(*this, e, INT_VAR_SIZE_MIN(), INT_VAL_MIN());
         break;
       case BRANCH_CBS_A_AVG_SD:
-        cbsbranch(*this, e, CBSBranchingHeuristic::A_AVG_SD);
+        cbsbranch(*this, e, CBSBranchingHeuristic::A_AVG_SD, RECOMPUTATION_RATIO);
         branch(*this, e, INT_VAR_SIZE_MIN(), INT_VAL_MIN());
         break;
       case BRANCH_CBS_AI:
-        cbsbranch(*this, e, CBSBranchingHeuristic::AI);
+        cbsbranch(*this, e, CBSBranchingHeuristic::AI, RECOMPUTATION_RATIO);
         branch(*this, e, INT_VAR_SIZE_MIN(), INT_VAL_MIN());
         break;
       }
@@ -358,6 +359,8 @@ main(int argc, char* argv[]) {
     std::string curr_param = argv[i];
     if (curr_param == "-exfile")
       EXFILE = true;
+    else if (curr_param == "-recomp")
+      RECOMPUTATION_RATIO = std::stod(argv[++i]);
   }
 
   if (!Spec(opt.instance()).valid()) {
