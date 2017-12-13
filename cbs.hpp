@@ -405,7 +405,8 @@ public:
                             VarId var_id, Val val, SlnCnt dens) {
       unsigned int pos = varpos[var_id];
       double diff = dens - best.dens;
-      double precision = 0.001;
+//      double precision = std::numeric_limits<double>::epsilon();
+      double precision = 0.000001;
       if (diff > precision || (std::abs(diff) < precision && var_id < best.var_id))
         best = {var_id, val, dens};
     });
