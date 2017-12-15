@@ -10,6 +10,7 @@
 /**
  * CONFIG VARIABLES
  */
+bool SYMPD = false;
 bool ALGO_APPROX = false;
 bool LAPLACIAN_TRIM = false;
 double RECOMPUTATION_RATIO = 1;
@@ -417,7 +418,10 @@ public:
                 laplacian(i,i) = 1;
           }
           // TODO: Regarder si on a un slow down a cause du view
-          inv = arma::inv_sympd(laplacian.submat(idxs, idxs));
+          if (SYMPD)
+            inv = arma::inv_sympd(laplacian.submat(idxs, idxs));
+          else
+            inv = arma::inv(laplacian.submat(idxs, idxs));
         }
 
         // We have to explore each edge in each node of the cc jj
@@ -859,6 +863,8 @@ main(int argc, char* argv[]) {
       LAPLACIAN_TRIM = true;
     else if (curr_param == "-recomp")
       RECOMPUTATION_RATIO = std::stod(argv[++i]);
+    else if (curr_param == "-sympd")
+      SYMPD = true;
   }
   Script::run<ConstrainedSpanningTree,DFS,InstanceOptions>(opt);
 
