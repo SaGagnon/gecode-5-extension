@@ -10,6 +10,7 @@
 #include <sql-interface.hh>
 #endif
 
+// TODO: Ne pas déclarer using namespace dans un .hpp...
 using namespace Gecode;
 
 using PropId  = unsigned int;
@@ -132,7 +133,7 @@ class VarInBrancher : public SharedHandle {
 protected:
   class VarInBrancherO : public SharedHandle::Object {
   public:
-    class BoolArray : public SolnDistribSize {
+    class BoolArray {
     private:
       VarId min_id{0};
       VarId max_id{0};
@@ -169,7 +170,7 @@ protected:
         std::cout << "CECI DOIT APPARAITRE" << std::endl;
         heap.free(inBrancher, size());
       }
-      bool inbrancher(VarId var_id) const override {
+      bool inbrancher(VarId var_id) const {
         if (var_id-min_id < 0) return false;
         if (var_id-min_id >= size()) return false;
         return get(var_id);
@@ -192,10 +193,13 @@ public:
   VarInBrancherO::BoolArray& getObject() const {
     return static_cast<VarInBrancherO*>(object())->bool_array;
   }
+  bool inbrancher(VarId var_id) const {
+    return getObject().inbrancher(var_id);
+  }
 };
 
 template<class View>
-class CBSBrancher : public Brancher, public SolnDistrib {
+class CBSBrancher : public Brancher {
 public:
   // A choice for branching
   struct Candidate {
@@ -260,7 +264,11 @@ public:
       unsigned int domsum;
       // Same, but for variables that are also in this brancher.
       unsigned int domsum_b;
-      p.propagator().solndistribsize(&varInBrancher.getObject(), domsum, domsum_b);
+      p.propagator().solndistribsize(
+        // (STD::BIND) Passing VarInBrancher as a standart function pointer: we
+        // need to bind it with an instance of the object (the "this" argument)
+        std::bind(&VarInBrancher::inbrancher, &varInBrancher, std::placeholders::_1),
+        domsum, domsum_b);
       // If there's still a propagator that has an unassigned variable that is
       // also in the brancher, we tell our brancher has still work to do.
       if (domsum_b > 0)
@@ -270,16 +278,15 @@ public:
   }
   virtual Candidate getChoice(Space& home) = 0;
 
-  bool compute(VarId var_id) const override {
-    return true;
-  }
-  Type type() const override {
-    return SolnDistrib::ALL;
-  }
+//  bool compute(VarId var_id) const override {
+//    return true;
+//  }
+//  Type type() const override {
+//    return SolnDistrib::ALL;
+//  }
   // Method used by all propagators for communicating calculated densities for
   // each of its (variable,value) pair.
-  void marginaldistrib(PropId prop_id, VarId var_id, Val val,
-                                       Dens density) override {
+  void marginaldistrib(PropId prop_id, VarId var_id, Val val, Dens density) {
     assert(var_id != 0);
     if (!varpos.isIn(var_id)) return;
     assert(!x[varpos[var_id]].assigned());
@@ -288,9 +295,9 @@ public:
 
     logProp[prop_id].insert_record(PropInfo::Record{var_id, val, density});
   }
-  void supportsize(PropId prop_id, SlnCnt count) override {
-    logProp[prop_id].setSlnCnt(count);
-  }
+//  void supportsize(PropId prop_id, SlnCnt count) override {
+//    logProp[prop_id].setSlnCnt(count);
+//  }
   const Choice* choice(Space& home) override {
     // Active propagators and the size we need for their log.
     // We considere a propagator as "active" only if
@@ -300,7 +307,10 @@ public:
     __gnu_cxx::hash_map<PropId, Psize > activeProps;
     for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
       unsigned int domsum, domsum_b;
-      p.propagator().solndistribsize(&varInBrancher.getObject(), domsum, domsum_b);
+      p.propagator().solndistribsize(
+        // See "STD::BIND" comment
+        std::bind(&VarInBrancher::inbrancher, &varInBrancher, std::placeholders::_1),
+        domsum, domsum_b);
       if (domsum_b != 0) {
         activeProps[p.propagator().id()] = {domsum, domsum_b};
       }
@@ -336,8 +346,13 @@ public:
         logProp[prop_id] = PropInfo(home, aProp->domsum, aProp->domsum_b);
       }
 
+      using namespace std::placeholders;
+
       if (!in_log || changed) {
-        p.propagator().solndistrib(home,this);
+        p.propagator().solndistrib(
+          home,
+          // See "STD::BIND" comment
+          std::bind(&CBSBrancher::marginaldistrib, this, _1, _2, _3, _4));
       }
 
     }
