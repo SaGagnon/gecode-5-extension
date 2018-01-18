@@ -437,6 +437,79 @@ public:
   }
 };
 
+template<class View>
+class TEST : public CBSBrancher<View> {
+  using CBSBrancher<View>::x;
+  using CBSBrancher<View>::varpos;
+  using CBSBrancher<View>::for_every_log_entry;
+  typedef typename CBSBrancher<View>::Candidate Candidate;
+public:
+  TEST(const Home& home, ViewArray<View>& x0, double recomputation_ratio0)
+    : CBSBrancher<View>(home, x0, recomputation_ratio0) {}
+
+  TEST(Space& home, bool share, CBSBrancher<View>& b)
+    : CBSBrancher<View>(home, share, b) {}
+
+  Candidate getChoice(Space& home) override {
+
+    static bool _print = true;
+
+    __gnu_cxx::hash_map<VarId,
+      __gnu_cxx::hash_map<Val, std::vector<double>>> diffs;
+//    __gnu_cxx::hash_map<VarId,
+//      __gnu_cxx::hash_map<PropId, double>> var_entropy;
+
+    PropInfo::Record best{0,0,0};
+    for_every_log_entry([&](PropId prop_id, SlnCnt slnCnt,
+                            VarId var_id, Val val, SlnCnt dens) {
+
+      diffs[var_id][val].push_back(dens);
+
+//      if (var_entropy.find(var_id) == var_entropy.end()) {
+//
+//      }
+
+    });
+
+    double tot = 0;
+    double nb = 0;
+
+    for (auto x : diffs) {
+      for (auto y : x.second) {
+        double a = y.second[0];
+        double b = y.second[1];
+
+        auto ABS = std::abs(a-b);
+
+        double moy = (a+b)/2.0;
+        if (moy > best.dens) {
+          best = {x.first, y.first, moy};
+        }
+
+
+        tot += ABS;
+        nb++;
+      }
+    }
+
+    if(_print)
+      std::cout << "moy " << tot/nb << std::endl;
+
+    assert(best.var_id != 0);
+    _print = false;
+
+    return {varpos[best.var_id],best.val};
+  }
+  Brancher* copy(Space& home, bool share) override {
+    return new (home) TEST(home,share,*this);
+  }
+  static void post(Home home, ViewArray<View>& x,
+                   double recomputation_ratio=1) {
+    (void) new (home) TEST(home,x,recomputation_ratio);
+  }
+};
+
+
 enum CBSBranchingHeuristic {
   MAX_SD,
   MAX_REL_SD,
@@ -454,6 +527,9 @@ void _cbsbranch(Home home, const T& x, CBSBranchingHeuristic s,
   switch(s) {
     case MAX_SD:
       MAXSD<View>::post(home,y,recomputation_ratio);
+      break;
+    case AI:
+      TEST<View>::post(home,y,recomputation_ratio);
       break;
     default:
       assert(false);
