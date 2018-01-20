@@ -265,7 +265,7 @@ public:
       unsigned int domsum;
       // Same, but for variables that are also in this brancher.
       unsigned int domsum_b;
-      p.propagator().marginaldistribsize(
+      p.propagator().domainsizesum(
         // (STD::BIND) Passing VarInBrancher as a standart function pointer: we
         // need to bind it with an instance of the object (the "this" argument)
         std::bind(&VarInBrancher::inbrancher, &varInBrancher, std::placeholders::_1),
@@ -308,7 +308,7 @@ public:
     __gnu_cxx::hash_map<PropId, Psize > activeProps;
     for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
       unsigned int domsum, domsum_b;
-      p.propagator().marginaldistribsize(
+      p.propagator().domainsizesum(
         // See "STD::BIND" comment
         std::bind(&VarInBrancher::inbrancher, &varInBrancher, std::placeholders::_1),
         domsum, domsum_b);
