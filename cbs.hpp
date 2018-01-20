@@ -5,6 +5,7 @@
 #include <ext/hash_map>
 
 #include <gecode/int.hh>
+#include <map>
 
 #ifdef SQL
 #include <sql-interface.hh>
@@ -401,26 +402,43 @@ public:
   }
 };
 
+
 template<class View>
-class MAXSD : public CBSBrancher<View> {
+void print_densities_first_node(
+  CBSBrancher<View>* brancher) {
+  static bool _print = true;
+  if (_print) {
+    brancher->for_every_log_entry([](PropId prop_id, SlnCnt slnCnt,
+                                     VarId var_id, Val val, Dens dens) {
+      std::cout << prop_id << ',' << var_id << ',' << val << ',' << dens
+                << std::endl;
+    });
+    _print = false;
+  }
+}
+
+
+template<class View>
+class maxSD : public CBSBrancher<View> {
   using CBSBrancher<View>::x;
   using CBSBrancher<View>::varpos;
   using CBSBrancher<View>::for_every_log_entry;
   typedef typename CBSBrancher<View>::Candidate Candidate;
 public:
-  MAXSD(const Home& home, ViewArray<View>& x0, double recomputation_ratio0)
+  maxSD(const Home& home, ViewArray<View>& x0, double recomputation_ratio0)
     : CBSBrancher<View>(home, x0, recomputation_ratio0) {}
 
-  MAXSD(Space& home, bool share, CBSBrancher<View>& b)
+  maxSD(Space& home, bool share, CBSBrancher<View>& b)
     : CBSBrancher<View>(home, share, b) {}
 
   Candidate getChoice(Space& home) override {
+    print_densities_first_node(this);
+
     PropInfo::Record best{0,0,0};
     for_every_log_entry([&](PropId prop_id, SlnCnt slnCnt,
-                            VarId var_id, Val val, SlnCnt dens) {
+                            VarId var_id, Val val, Dens dens) {
       unsigned int pos = varpos[var_id];
       double diff = dens - best.dens;
-//      double precision = std::numeric_limits<double>::epsilon();
       double precision = 0.000001;
       if (diff > precision || (std::abs(diff) < precision && var_id < best.var_id))
         best = {var_id, val, dens};
@@ -429,85 +447,65 @@ public:
     return {varpos[best.var_id],best.val};
   }
   Brancher* copy(Space& home, bool share) override {
-    return new (home) MAXSD(home,share,*this);
+    return new (home) maxSD(home,share,*this);
   }
   static void post(Home home, ViewArray<View>& x,
                    double recomputation_ratio=1) {
-    (void) new (home) MAXSD(home,x,recomputation_ratio);
+    (void) new (home) maxSD(home,x,recomputation_ratio);
   }
 };
 
 template<class View>
-class TEST : public CBSBrancher<View> {
+class avgSD : public CBSBrancher<View> {
   using CBSBrancher<View>::x;
   using CBSBrancher<View>::varpos;
   using CBSBrancher<View>::for_every_log_entry;
   typedef typename CBSBrancher<View>::Candidate Candidate;
 public:
-  TEST(const Home& home, ViewArray<View>& x0, double recomputation_ratio0)
+  avgSD(const Home& home, ViewArray<View>& x0, double recomputation_ratio0)
     : CBSBrancher<View>(home, x0, recomputation_ratio0) {}
 
-  TEST(Space& home, bool share, CBSBrancher<View>& b)
+  avgSD(Space& home, bool share, CBSBrancher<View>& b)
     : CBSBrancher<View>(home, share, b) {}
 
   Candidate getChoice(Space& home) override {
+    print_densities_first_node(this);
 
-    static bool _print = true;
+    // Aggregation of densities
+    using TotDens = Dens;
+    using NbProp = unsigned int;
+    std::map<VarId, std::map<Val, std::pair<TotDens, NbProp>>> aggr;
 
-    __gnu_cxx::hash_map<VarId,
-      __gnu_cxx::hash_map<Val, std::vector<double>>> diffs;
-//    __gnu_cxx::hash_map<VarId,
-//      __gnu_cxx::hash_map<PropId, double>> var_entropy;
-
-    PropInfo::Record best{0,0,0};
     for_every_log_entry([&](PropId prop_id, SlnCnt slnCnt,
-                            VarId var_id, Val val, SlnCnt dens) {
-
-      diffs[var_id][val].push_back(dens);
-
-//      if (var_entropy.find(var_id) == var_entropy.end()) {
-//
-//      }
-
+                            VarId var_id, Val val, Dens dens) {
+      if (aggr[var_id].find(val) == aggr[var_id].end())
+        aggr[var_id][val] = std::make_pair(0,0);
+      aggr[var_id][val].first += dens;
+      aggr[var_id][val].second += 1;
     });
 
-    double tot = 0;
-    double nb = 0;
-
-    for (auto x : diffs) {
-      for (auto y : x.second) {
-        double a = y.second[0];
-        double b = y.second[1];
-
-        auto ABS = std::abs(a-b);
-
-        double moy = (a+b)/2.0;
+    PropInfo::Record best{0,0,0};
+    for (auto varid : aggr) {
+      for (auto val : varid.second) {
+        double moy = val.second.first / val.second.second;
         if (moy > best.dens) {
-          best = {x.first, y.first, moy};
+          best = {varid.first, val.first, moy};
         }
-
-
-        tot += ABS;
-        nb++;
       }
     }
 
-    if(_print)
-      std::cout << "moy " << tot/nb << std::endl;
-
     assert(best.var_id != 0);
-    _print = false;
-
-    return {varpos[best.var_id],best.val};
+    return {varpos[best.var_id], best.val};
   }
   Brancher* copy(Space& home, bool share) override {
-    return new (home) TEST(home,share,*this);
+    return new (home) avgSD(home,share,*this);
   }
   static void post(Home home, ViewArray<View>& x,
                    double recomputation_ratio=1) {
-    (void) new (home) TEST(home,x,recomputation_ratio);
+    (void) new (home) avgSD(home,x,recomputation_ratio);
   }
 };
+
 
 
 enum CBSBranchingHeuristic {
@@ -526,10 +524,10 @@ void _cbsbranch(Home home, const T& x, CBSBranchingHeuristic s,
   ViewArray<View> y(home,x);
   switch(s) {
     case MAX_SD:
-      MAXSD<View>::post(home,y,recomputation_ratio);
+      maxSD<View>::post(home,y,recomputation_ratio);
       break;
-    case AI:
-      TEST<View>::post(home,y,recomputation_ratio);
+    case A_AVG_SD:
+      avgSD<View>::post(home,y,recomputation_ratio);
       break;
     default:
       assert(false);
