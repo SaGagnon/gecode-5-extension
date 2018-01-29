@@ -488,6 +488,7 @@ public:
     for (auto varid : aggr) {
       for (auto val : varid.second) {
         double moy = val.second.first / val.second.second;
+//        double moy = val.second.first / 2;
         if (moy > best.dens) {
           best = {varid.first, val.first, moy};
         }
