@@ -208,6 +208,7 @@ public:
     Val val; // Value in the domain of the variable
   };
 protected:
+  mutable bool naif_branching;
   const double recomputation_ratio;
   ViewArray<View> x;
   SharedHashMap<VarId, unsigned int> varpos;
@@ -215,7 +216,8 @@ protected:
   LogProp logProp;
 public:
   CBSBrancher(Home home, ViewArray<View>& x0, double recomputation_ratio0=1)
-    : Brancher(home), recomputation_ratio(recomputation_ratio0),
+    : Brancher(home), naif_branching(false),
+      recomputation_ratio(recomputation_ratio0),
       x(x0), varInBrancher(x0),
       logProp(LogProp::size_type(), LogProp::hasher(),
               LogProp::key_equal(), LogProp::allocator_type(home)) {
@@ -241,7 +243,8 @@ public:
     return sizeof(*this);
   }
   CBSBrancher(Space& home, bool share, CBSBrancher& b)
-    : Brancher(home,share,b), recomputation_ratio(b.recomputation_ratio),
+    : Brancher(home,share,b), naif_branching(b.naif_branching),
+      recomputation_ratio(b.recomputation_ratio),
       varInBrancher(b.varInBrancher),
       logProp(b.logProp.begin(), b.logProp.end(),
                  LogProp::size_type(), LogProp::hasher(),
@@ -275,6 +278,12 @@ public:
       if (domsum_b > 0)
         return true;
     }
+
+    naif_branching = true;
+    for (int i =0; i<x.size(); i++)
+      if (!x[i].assigned())
+        return true;
+
     return false;
   }
   virtual Candidate getChoice(Space& home) = 0;
@@ -300,69 +309,92 @@ public:
 //    logProp[prop_id].setSlnCnt(count);
 //  }
   const Choice* choice(Space& home) override {
-    // Active propagators and the size we need for their log.
-    // We considere a propagator as "active" only if
-    // - it supports slndist()
-    // - it has unassigned variables that are also in the brancher
-    struct Psize { size_t domsum; size_t domsum_b; };
-    __gnu_cxx::hash_map<PropId, Psize > activeProps;
-    for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
-      unsigned int domsum, domsum_b;
-      p.propagator().domainsizesum(
-        // See "STD::BIND" comment
-        std::bind(&VarInBrancher::inbrancher, &varInBrancher, std::placeholders::_1),
-        domsum, domsum_b);
-      if (domsum_b != 0) {
-        activeProps[p.propagator().id()] = {domsum, domsum_b};
-      }
-    }
 
-    // We delete log elements corresponding to non active propagators
-    {
-      std::vector<PropId> propsToDelete;
-      for(const auto& kv : logProp)
-        if (activeProps.find(kv.first) == activeProps.end())
-          propsToDelete.push_back(kv.first);
-
-      for (auto prop_id : propsToDelete)
-        logProp.erase(prop_id);
-    }
-
-    for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
-      auto prop_id = p.propagator().id();
-      if (activeProps.find(prop_id) == activeProps.end()) continue;
-      auto aProp = &activeProps[prop_id];
-
-      // Propagator already in the log?
-      bool in_log = logProp.find(prop_id) != logProp.end();
-      bool changed = true;
-
-      if (in_log) {
-        auto prop = &logProp[prop_id];
-        changed = prop->getDomSum()*recomputation_ratio > aProp->domsum;
-        if (changed)
-          prop->reuse_mem(aProp->domsum, aProp->domsum_b);
-      } else {
-        // We create a new propagator
-        logProp[prop_id] = PropInfo(home, aProp->domsum, aProp->domsum_b);
-      }
-
-      using namespace std::placeholders;
-
-      if (!in_log || changed) {
-        p.propagator().solndistrib(
-          home,
+    if (!naif_branching) {
+      // Active propagators and the size we need for their log.
+      // We considere a propagator as "active" only if
+      // - it supports slndist()
+      // - it has unassigned variables that are also in the brancher
+      struct Psize {
+        size_t domsum;
+        size_t domsum_b;
+      };
+      __gnu_cxx::hash_map<PropId, Psize> activeProps;
+      for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
+        unsigned int domsum, domsum_b;
+        p.propagator().domainsizesum(
           // See "STD::BIND" comment
-          std::bind(&CBSBrancher::marginaldistrib, this, _1, _2, _3, _4));
+          std::bind(&VarInBrancher::inbrancher, &varInBrancher, std::placeholders::_1),
+          domsum, domsum_b);
+        if (domsum_b != 0) {
+          activeProps[p.propagator().id()] = {domsum, domsum_b};
+        }
       }
 
-    }
+      // We delete log elements corresponding to non active propagators
+      {
+        std::vector<PropId> propsToDelete;
+        for (const auto& kv : logProp)
+          if (activeProps.find(kv.first) == activeProps.end())
+            propsToDelete.push_back(kv.first);
 
-    // We find the choice.
-    Candidate c = getChoice(home);
-//    assert(!x[c.idx].assigned());
-//    assert(x[c.idx].in(c.val));
-    return new PosValChoice<int>(*this,2,c.idx,c.val);
+        for (auto prop_id : propsToDelete)
+          logProp.erase(prop_id);
+      }
+
+      for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
+        auto prop_id = p.propagator().id();
+        if (activeProps.find(prop_id) == activeProps.end()) continue;
+        auto aProp = &activeProps[prop_id];
+
+        // Propagator already in the log?
+        bool in_log = logProp.find(prop_id) != logProp.end();
+        bool changed = true;
+
+        if (in_log) {
+          auto prop = &logProp[prop_id];
+          changed = prop->getDomSum() * recomputation_ratio > aProp->domsum;
+          if (changed)
+            prop->reuse_mem(aProp->domsum, aProp->domsum_b);
+        } else {
+          // We create a new propagator
+          logProp[prop_id] = PropInfo(home, aProp->domsum, aProp->domsum_b);
+        }
+
+        using namespace std::placeholders;
+
+        if (!in_log || changed) {
+          p.propagator().solndistrib(
+            home,
+            // See "STD::BIND" comment
+            std::bind(&CBSBrancher::marginaldistrib, this, _1, _2, _3, _4));
+        }
+
+      }
+
+      // We find the choice.
+      Candidate c = getChoice(home);
+    assert(!x[c.idx].assigned());
+    assert(x[c.idx].in(c.val));
+      return new PosValChoice<int>(*this, 2, c.idx, c.val);
+    } else {
+      Candidate c;
+      int mindom = INT_MAX;
+      for (int i=0; i<x.size(); i++) {
+        if (x[i].assigned()) continue;
+        if (x[i].size() < mindom) {
+          mindom = x[i].size();
+          int minval = INT_MAX;
+          for (Int::ViewValues<View> val(x[i]); val(); ++val) {
+            if (val.val() < minval) {
+              c = {i, val.val()};
+              minval = val.val();
+            }
+          }
+        }
+      }
+      return new PosValChoice<int>(*this, 2, c.idx, c.val);
+    }
   }
   const Choice* choice(const Space&, Archive& e) override {
     int pos, val;
@@ -372,11 +404,55 @@ public:
   ExecStatus commit(Space& home, const Choice& c, unsigned int a) override {
     const auto& pvc = static_cast<const PosValChoice<int>&>(c);
     int pos=pvc.pos().pos, val=pvc.val();
-    if (a == 0)
-      return me_failed(x[pos].eq(home,val)) ? ES_FAILED : ES_OK;
-    else
-      return me_failed(x[pos].nq(home,val)) ? ES_FAILED : ES_OK;
+    if (a == 0) {
+//      std::cout << "g " << pos << " " << val << " ";
+//      print_stats();
+      return me_failed(x[pos].eq(home, val)) ? ES_FAILED : ES_OK;
+    }
+    else {
+//      std::cout << "b " << pos << " " << val << " ";
+//      print_stats();
+      return me_failed(x[pos].nq(home, val)) ? ES_FAILED : ES_OK;
+    }
   }
+  void print_stats() {
+    if (naif_branching) return;
+
+    std::map<VarId, std::map<Val, std::vector<Dens>>> densities;
+    for_every_log_entry([&](PropId, SlnCnt, VarId varId, Val val, Dens dens) {
+      densities[varId][val].push_back(dens);
+    });
+
+    double sum = 0;
+    double nb = 0;
+
+    for (auto var : densities) {
+      for (auto val : var.second) {
+        auto n = val.second.size();
+        if (n != 1) {
+
+          double tot = 0;
+          for (auto dens : val.second)
+            tot += dens;
+
+          double mean = tot / n;
+
+          double std = 0;
+          for (auto dens : val.second)
+            std += std::pow(dens - mean, 2);
+
+          std /= n - 1;
+          std = std::sqrt(std);
+
+          sum += std;
+        }
+        nb++;
+      }
+    }
+
+    std::cout << sum / nb << " " << nb << std::endl;
+  }
+
   void print(const Space& home, const Choice& c, unsigned int a,
                      std::ostream& o) const override {
     const auto& pvc = static_cast<const PosValChoice<int>&>(c);
@@ -387,7 +463,7 @@ public:
       o << "x[" << pos << "] != " << val;
   }
 public:
-  void for_every_log_entry(const std::function<void(PropId,SlnCnt,VarId,Val,Dens)>& f) {
+  void for_every_log_entry(const std::function<void(PropId,SlnCnt,VarId,Val,Dens)>& f) const {
     for (const auto& elem : logProp) {
       auto prop_id = elem.first;
       auto prop = &elem.second;
@@ -404,15 +480,15 @@ public:
 
 
 template<class View>
-void print_densities_first_node(
-  CBSBrancher<View>* brancher) {
+void print_densities_first_node(CBSBrancher<View>* brancher) {
   static bool _print = true;
   if (_print) {
-    brancher->for_every_log_entry([](PropId prop_id, SlnCnt slnCnt,
-                                     VarId var_id, Val val, Dens dens) {
-      std::cout << prop_id << ',' << var_id << ',' << val << ',' << dens
-                << std::endl;
-    });
+//    brancher->for_every_log_entry([](PropId prop_id, SlnCnt slnCnt,
+//                                     VarId var_id, Val val, Dens dens) {
+//      std::cout << prop_id << ',' << var_id << ',' << val << ',' << dens
+//                << std::endl;
+//    });
+//    brancher->print_stats();
     _print = false;
   }
 }
