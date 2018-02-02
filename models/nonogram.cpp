@@ -43,6 +43,9 @@
 
 using namespace Gecode;
 
+bool EXFILE = false;
+std::string EXFILE_PATH;
+
 namespace {
 
 /// List of specifications
@@ -115,8 +118,31 @@ public:
   };
   /// Construction of the model.
   Nonogram(const SizeOptions& opt)
-    : Script(opt), numpb(opt.size()),
-      spec(specs[opt.size()]), b(*this,width()*height(),0,1) {
+    : Script(opt), numpb(opt.size()) {
+
+
+    if (!EXFILE) {
+      spec = specs[opt.size()];
+    } else {
+
+      std::vector<int> numbers;
+      {
+        std::ifstream f(EXFILE_PATH);
+        std::string word;
+        while (f >> word) {
+          numbers.push_back(std::stoi(word));
+        }
+      }
+
+      int* _spec = new int[numbers.size()];
+      for (int i=0; i<numbers.size(); i++) {
+        _spec[i] = numbers[i];
+      }
+      spec = _spec;
+    }
+
+    b = BoolVarArray(*this,width()*height(),0,1);
+
     Matrix<BoolVarArray> m(b, width(), height());
 
     {
@@ -258,6 +284,15 @@ main(int argc, char* argv[]) {
   opt.branching(Nonogram::BRANCH_CBS_W_SC_AVG, "cbs_w_sc_avg", "wSCAvg counting base search");
   opt.branching(Nonogram::BRANCH_CBS_AI, "cbs_ai", "ai");
   opt.parse(argc,argv);
+
+  for (int i=0; i<argc; i++) {
+    std::string curr_param = argv[i];
+    if (curr_param == "-exfile") {
+      EXFILE = true;
+      EXFILE_PATH = argv[i+1];
+      i++;
+    }
+  }
 
   if (opt.size() >= n_examples) {
     std::cerr << "Error: size must be between 0 and "
