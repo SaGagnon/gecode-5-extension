@@ -11,6 +11,11 @@
 #include <sql-interface.hh>
 #endif
 
+#define MD
+
+const int COUSSIN_MD = 0;
+
+
 // TODO: Ne pas déclarer using namespace dans un .hpp...
 using namespace Gecode;
 
@@ -43,15 +48,18 @@ private:
   SlnCnt slnCount{0};
   /// Sum of all domains of non assigned variable
   size_t domsum{0};
+
+  unsigned int mindom{0};
 public:
   PropInfo() = default;
-  PropInfo(Space& home, size_t domsum0, size_t domsum_b)
-    : domsum(domsum0) {
+  PropInfo(Space& home, size_t domsum0, size_t domsum_b, unsigned int md)
+    : domsum(domsum0), mindom(md) {
     records.x = home.alloc<Record>(domsum_b);
     records.size = domsum_b;
   }
   PropInfo(Space& home, const PropInfo& o)
-    : domsum(o.domsum), records(o.records), slnCount(o.slnCount) {
+    : domsum(o.domsum), records(o.records), slnCount(o.slnCount),
+      mindom(o.mindom) {
     records.x = home.alloc<Record>(records.size);
     memcpy(records.x, o.records.x, records.pos * sizeof(Record));
   }
@@ -74,7 +82,7 @@ public:
   }
   void insert_record(const Record&& r) {
     assert(records.x != nullptr);
-//    assert(r.dens>=0 && r.dens<=1.001);
+    assert(r.dens>=0 && r.dens<=1.001);
     records.x[records.pos] = r;
     records.pos++;
     assert(records.size >= records.pos);
@@ -86,6 +94,12 @@ public:
     records.pos = 0;
     records.size = domsum_b;
     domsum = domsum0;
+  }
+  void setMinDom(unsigned int md) {
+    mindom = md;
+  }
+  unsigned int getMinDom() {
+    return mindom;
   }
 };
 
@@ -121,12 +135,15 @@ public:
     auto *hm = &static_cast<SharedHashMapO*>(object())->hash_map;
     return hm->find(i) != hm->end();
   }
-  Val& operator[](unsigned int i) {
-    return static_cast<SharedHashMapO*>(object())->hash_map[i];
-  }
+//  Val& operator[](unsigned int i) {
+//    return static_cast<SharedHashMapO*>(object())->hash_map.at(i);
+//  }
   Val operator[](unsigned int i) const {
-    assert(isIn(i));
-    return static_cast<SharedHashMapO*>(object())->hash_map[i];
+//    assert(isIn(i));
+    return static_cast<SharedHashMapO*>(object())->hash_map.at(i);
+  }
+  void insert(unsigned int k, unsigned int v) {
+    static_cast<SharedHashMapO*>(object())->hash_map.insert(std::make_pair(k,v));
   }
 };
 
@@ -214,13 +231,15 @@ protected:
   SharedHashMap<VarId, unsigned int> varpos;
   VarInBrancher varInBrancher;
   LogProp logProp;
+  unsigned int global_mindom;
 public:
   CBSBrancher(Home home, ViewArray<View>& x0, double recomputation_ratio0=1)
     : Brancher(home), naif_branching(false),
       recomputation_ratio(recomputation_ratio0),
       x(x0), varInBrancher(x0),
       logProp(LogProp::size_type(), LogProp::hasher(),
-              LogProp::key_equal(), LogProp::allocator_type(home)) {
+              LogProp::key_equal(), LogProp::allocator_type(home)),
+      global_mindom(0) {
     assert(recomputation_ratio0 >= 0 && recomputation_ratio0 <= 1);
     // Because we must call the destructor of aAvgSD
     home.notice(*this,AP_DISPOSE);
@@ -231,7 +250,7 @@ public:
 
     // We assign an index for each variable id
     for (unsigned int i=0; i<x.size(); i++)
-      varpos[x[i].id()] = i;
+      varpos.insert(x[i].id(), i);
   }
   size_t dispose(Space& home) override {
     home.ignore(*this, AP_DISPOSE);
@@ -248,7 +267,8 @@ public:
       varInBrancher(b.varInBrancher),
       logProp(b.logProp.begin(), b.logProp.end(),
                  LogProp::size_type(), LogProp::hasher(),
-                 LogProp::key_equal(), LogProp::allocator_type(home)) {
+                 LogProp::key_equal(), LogProp::allocator_type(home)),
+      global_mindom(b.global_mindom) {
     // We tell that we have a subscription to x the new constructed space
     // The hashmap of the VarIdPos object is shared between all spaces. We must
     // tell here that we want to access the same memory that was allocated in
@@ -318,16 +338,27 @@ public:
       struct Psize {
         size_t domsum;
         size_t domsum_b;
+        unsigned int mindom;
       };
+
+      global_mindom = INT_MAX;
+
       __gnu_cxx::hash_map<PropId, Psize> activeProps;
       for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
-        unsigned int domsum, domsum_b;
+        unsigned int domsum, domsum_b, mindom;
         p.propagator().domainsizesum(
           // See "STD::BIND" comment
           std::bind(&VarInBrancher::inbrancher, &varInBrancher, std::placeholders::_1),
           domsum, domsum_b);
         if (domsum_b != 0) {
-          activeProps[p.propagator().id()] = {domsum, domsum_b};
+          p.propagator().mindom(
+            std::bind(&VarInBrancher::inbrancher, &varInBrancher, std::placeholders::_1),
+            mindom
+          );
+          if (mindom < global_mindom)
+            global_mindom = mindom;
+
+          activeProps[p.propagator().id()] = {domsum, domsum_b, mindom};
         }
       }
 
@@ -354,12 +385,23 @@ public:
         if (in_log) {
           auto prop = &logProp[prop_id];
           changed = prop->getDomSum() * recomputation_ratio > aProp->domsum;
-          if (changed)
+          #ifdef MD
+//          if (changed && aProp->mindom > global_mindom + COUSSIN_MD) {
+//            static int cnt = 0;
+//            std::cout << aProp->mindom << " " << global_mindom << " " << ++cnt << std::endl;
+//          }
+          changed = changed && aProp->mindom <= global_mindom + COUSSIN_MD;
+          #endif
+          if (changed) {
             prop->reuse_mem(aProp->domsum, aProp->domsum_b);
+            prop->setMinDom(aProp->mindom);
+          }
         } else {
           // We create a new propagator
-          logProp[prop_id] = PropInfo(home, aProp->domsum, aProp->domsum_b);
+          logProp[prop_id] = PropInfo(home, aProp->domsum, aProp->domsum_b, aProp->mindom);
         }
+
+
 
         using namespace std::placeholders;
 
@@ -367,12 +409,19 @@ public:
           p.propagator().solndistrib(
             home,
             // See "STD::BIND" comment
-            std::bind(&CBSBrancher::marginaldistrib, this, _1, _2, _3, _4));
+            std::bind(&CBSBrancher::marginaldistrib, this, _1, _2, _3, _4)
+//          ,  Propagator::SolnDistribCalc::MAX_PER_PROP
+          );
+
+//          static int cnt = 0;
+//          std::cout << "calc: " << ++cnt << std::endl;
         }
 
       }
 
       // We find the choice.
+//      static int cnt = 0;
+//      std::cout << "getChoice " << ++cnt << std::endl;
       Candidate c = getChoice(home);
     assert(!x[c.idx].assigned());
     assert(x[c.idx].in(c.val));
@@ -468,11 +517,10 @@ public:
       auto prop_id = elem.first;
       auto prop = &elem.second;
       for (int i=0; i<prop->getPosRec(); i++) {
-        auto r = (*prop)[i];
-        auto pos = varpos[r.var_id];
+        auto pos = varpos[(*prop)[i].var_id];
         // With recomputation_ratio, it is possible some records are no more good.
-        if (!x[pos].assigned() && x[pos].in(r.val))
-          f(prop_id, prop->getSlnCnt(), r.var_id, r.val, r.dens);
+        if (!x[pos].assigned() && x[pos].in((*prop)[i].val))
+          f(prop_id, prop->getSlnCnt(), (*prop)[i].var_id, (*prop)[i].val, (*prop)[i].dens);
       }
     }
   }
@@ -513,10 +561,12 @@ public:
     PropInfo::Record best{0,0,0};
     for_every_log_entry([&](PropId prop_id, SlnCnt slnCnt,
                             VarId var_id, Val val, Dens dens) {
+
       unsigned int pos = varpos[var_id];
-      double diff = dens - best.dens;
-      double precision = 0.000001;
-      if (diff > precision || (std::abs(diff) < precision && var_id < best.var_id))
+//      double diff = dens - best.dens;
+//      double precision = 0.000001;
+//      if (diff > precision || (std::abs(diff) < precision && var_id < best.var_id))
+      if (dens > best.dens)
         best = {var_id, val, dens};
     });
     assert(best.var_id != 0);
@@ -528,6 +578,48 @@ public:
   static void post(Home home, ViewArray<View>& x,
                    double recomputation_ratio=1) {
     (void) new (home) maxSD(home,x,recomputation_ratio);
+  }
+};
+
+template<class View>
+class maxSDMD : public CBSBrancher<View> {
+  using CBSBrancher<View>::x;
+  using CBSBrancher<View>::varpos;
+  using CBSBrancher<View>::for_every_log_entry;
+  using CBSBrancher<View>::logProp;
+  using CBSBrancher<View>::global_mindom;
+  typedef typename CBSBrancher<View>::Candidate Candidate;
+public:
+  maxSDMD(const Home& home, ViewArray<View>& x0, double recomputation_ratio0)
+    : CBSBrancher<View>(home, x0, recomputation_ratio0) {}
+
+  maxSDMD(Space& home, bool share, CBSBrancher<View>& b)
+    : CBSBrancher<View>(home, share, b) {}
+
+  Candidate getChoice(Space& home) override {
+    print_densities_first_node(this);
+
+    PropInfo::Record best{0,0,0};
+    for_every_log_entry([&](PropId prop_id, SlnCnt slnCnt,
+                            VarId var_id, Val val, Dens dens) {
+      if (logProp[prop_id].getMinDom() <= global_mindom + COUSSIN_MD) {
+        unsigned int pos = varpos[var_id];
+        double diff = dens - best.dens;
+        double precision = 0.000001;
+        if (diff > precision ||
+            (std::abs(diff) < precision && var_id < best.var_id))
+          best = {var_id, val, dens};
+      }
+    });
+    assert(best.var_id != 0);
+    return {varpos[best.var_id],best.val};
+  }
+  Brancher* copy(Space& home, bool share) override {
+    return new (home) maxSDMD(home,share,*this);
+  }
+  static void post(Home home, ViewArray<View>& x,
+                   double recomputation_ratio=1) {
+    (void) new (home) maxSDMD(home,x,recomputation_ratio);
   }
 };
 
@@ -601,7 +693,12 @@ void _cbsbranch(Home home, const T& x, CBSBranchingHeuristic s,
   ViewArray<View> y(home,x);
   switch(s) {
     case MAX_SD:
+//      #ifdef MD
+//      maxSDMD<View>::post(home,y,recomputation_ratio);
+//      #else
       maxSD<View>::post(home,y,recomputation_ratio);
+//      #endif
+
       break;
     case A_AVG_SD:
       avgSD<View>::post(home,y,recomputation_ratio);
